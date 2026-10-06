@@ -789,6 +789,41 @@ const LINES = (function () {
   for (let y = 1; y < N; y++) L.push(diag(0, y, 1, -1));
   return L.filter(l => l.length >= 5);
 })();
+/* ============================================================
+   叶子节点“威胁终局”判定（消除地平线效应）
+   1) 走子方存在连五点 -> 该方下一手立即获胜
+   2) 非走子方存在 >=2 个互异连五点（活四/双四）-> 走子方必败
+   两条均为可证明的棋盘事实，非启发式；分值采用与内部节点
+   winLine 终局完全一致的 WIN_V - ply 约定，保证胜负排序单调。
+   ============================================================ */
+const thrMark = new Int32Array(N * N);
+let thrStamp = 0;
+function fiveThreatCount(b, side) {
+  thrStamp++;
+  let n = 0;
+  for (let li = 0; li < LINES.length; li++) {
+    const line = LINES[li], len = line.length;
+    for (let st = 0; st + 5 <= len; st++) {
+      let c = 0, free = -1, ok = true;
+      for (let k = 0; k < 5; k++) {
+        const v = b[line[st + k]];
+        if (v === side) c++;
+        else if (v === EMPTY) free = line[st + k];
+        else { ok = false; break; }
+      }
+      if (ok && c === 4 && thrMark[free] !== thrStamp) { thrMark[free] = thrStamp; n++; }
+    }
+  }
+  return n;
+}
+function evalLeaf(b, ai, side, ply) {
+  const maxing = side === ai;
+  if (fiveThreatCount(b, side) > 0)                  // 走子方有连五点：下一手即胜
+    return maxing ? (WIN_V - ply) : -(WIN_V - ply);
+  if (fiveThreatCount(b, other(side)) >= 2)          // 对方双威胁且轮我方：无法兼顾，必败
+    return maxing ? -(WIN_V - (ply + 1)) : (WIN_V - (ply + 1));
+  return evalBoard(b, ai);
+}
 function evalBoard(b, ai) {
   const opp = other(ai);
   let s = 0;
@@ -814,10 +849,10 @@ function topKScored(b, side, k) {
   return arr.slice(0, k);
 }
 function abSearch(b, ai, side, depth, alpha, beta, ply, t0, budget) {
-  if (depth <= 0) return evalBoard(b, ai);
-  if (now() - t0 > budget) return evalBoard(b, ai);
+  if (depth <= 0) return evalLeaf(b, ai, side, ply);
+  if (now() - t0 > budget) return evalLeaf(b, ai, side, ply);
   const cands = topKScored(b, side, K_BY_DEPTH(depth));
-  if (!cands.length) return evalBoard(b, ai);
+  if (!cands.length) return evalLeaf(b, ai, side, ply);
   const maxing = side === ai;
   let val = maxing ? -Infinity : Infinity;
   for (const c of cands) {
@@ -859,7 +894,7 @@ function searchBest(b, ai, ordered, depth) {
     if (timedOut) break;
     best = cur; bestV = curV;
     alpha = Math.max(alpha, curV);
-    if (bestV >= WIN_V) break;
+    if (bestV >= WIN_V - depth) break;   // WIN_V-ply 级的必然胜也可提前收敛
     if (now() - t0 > budget) break;
   }
   return best;
@@ -1474,6 +1509,32 @@ function selfTest() {
     if (winLine(b, mv.x, mv.y)) break;
   }
   console.log('  困难×中等 24 手抽样：' + (Date.now() - ta) + 'ms');
+
+  /* ---- 地平线补丁：威胁计数 / 叶子终局判定 ---- */
+  b = makeBoard();
+  for (let k = 1; k <= 4; k++) b[idx(k, 7)] = BLACK;   // 黑 x=1..4 四连
+  b[idx(6, 7)] = BLACK;                               // 间一格再续一子
+  // 连五点：x=0（窗口0-4）、x=5（窗口1-5 与 2-6 各命中一次，须去重）
+  assert(fiveThreatCount(b, BLACK) === 2, '连五点去重后应为 2（x=0 与 x=5）');
+  assert(fiveThreatCount(b, WHITE) === 0, '白方无连五点');
+  // 条件2：轮白走、黑持两个连五点 -> 白必败
+  assert(evalLeaf(b, BLACK, WHITE, 3) === WIN_V - 4, 'cond2：ai=黑、白走子 → 胜 WIN_V-(ply+1)');
+  assert(evalLeaf(b, WHITE, WHITE, 3) === -(WIN_V - 4), 'cond2：ai=白、白走子 → 负 -(WIN_V-(ply+1))');
+  // 条件1：轮白走且白自己有连五点 -> 白下一手即胜
+  b = makeBoard();
+  for (let k = 1; k <= 4; k++) b[idx(k, 8)] = WHITE;
+  assert(fiveThreatCount(b, WHITE) === 2, '白四连 → 2 个连五点');
+  assert(evalLeaf(b, BLACK, WHITE, 2) === -(WIN_V - 2), 'cond1：ai=黑、白走子 → 负 -(WIN_V-ply)');
+  assert(evalLeaf(b, WHITE, WHITE, 2) === WIN_V - 2, 'cond1：ai=白、白走子 → 胜 WIN_V-ply');
+  // 无威胁时回落静态评估
+  b = makeBoard();
+  b[idx(7, 7)] = BLACK; b[idx(9, 9)] = WHITE;
+  assert(evalLeaf(b, BLACK, WHITE, 4) === evalBoard(b, BLACK), '无威胁回落 evalBoard');
+  // 补丁不破坏必胜/必挡（chooseAiMove 前置检查仍最高优先）
+  b = makeBoard();
+  for (let k = 0; k < 4; k++) b[idx(k, 7)] = BLACK;
+  const mvP = chooseAiMove(b, 'expert', BLACK);
+  assert(mvP && mvP.i === idx(4, 7), '补丁后专家难度仍立即补五');
 
   console.log('SELFTEST PASS');
 }
