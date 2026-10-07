@@ -636,7 +636,7 @@ const now = () => (typeof performance !== 'undefined' ? performance.now() : Date
 
 /* ---------- 层级权重（启发式评分） ---------- */
 const T = { NONE: 0, ONE: 1, TWO: 2, OTWO: 3, THREE: 4, BROKEN: 5, OTHREE: 6, FOUR: 7, OFOUR: 8, FIVE: 9 };
-const TW = { 1: 100, 2: 1e3, 3: 1e4, 4: 1e5, 5: 7e5, 6: 1e6, 7: 1e7, 8: 1e8, 9: 1e9 };
+const TW = { 0: 0, 1: 100, 2: 1e3, 3: 1e4, 4: 1e5, 5: 7e5, 6: 1e6, 7: 1e7, 8: 1e8, 9: 1e9 };
 const WIN_V = 5e9;                             // 终局分值，高于任何静态评估
 
 /* ---------- 胜负检测：返回连珠格（≥5） ---------- */
@@ -757,14 +757,15 @@ function scoreCell(b, x, y, p) {
 }
 
 /* ---------- 候选点：已有棋子周围 2 格内的空点 ---------- */
-function candidateList(b) {
+function candidateList(b, radius) {
+  const R = radius === undefined ? 2 : radius;
   const mark = new Uint8Array(N * N);
   let any = false;
   for (let i = 0; i < N * N; i++) {
     if (!b[i]) continue;
     any = true;
     const x = i % N, y = (i / N) | 0;
-    for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) {
+    for (let dy = -R; dy <= R; dy++) for (let dx = -R; dx <= R; dx++) {
       const nx = x + dx, ny = y + dy;
       if (inB(nx, ny) && !b[idx(nx, ny)]) mark[idx(nx, ny)] = 1;
     }
@@ -841,17 +842,21 @@ function evalBoard(b, ai) {
 
 /* ---------- Alpha-Beta 搜索 ---------- */
 const K_BY_DEPTH = d => (d >= 3 ? 6 : 4);
-function topKScored(b, side, k) {
-  const cl = candidateList(b);
+/* 深层（临近叶子）节点只用半径 1 的邻域出候选：树中绝大多数节点位于深层，
+   给它们整片半径 2 区域打分却只展开 4~6 个，绝大部分打分会被丢弃。 */
+const RADIUS_BY_DEPTH = d => (d >= 3 ? 2 : 1);
+const EXT_LIMIT = 8;                           // 单条线路上最多延伸的手数（防止爆炸）
+function topKScored(b, side, k, radius) {
+  const cl = candidateList(b, radius);
   const arr = [];
   for (const i of cl) arr.push(scoreCell(b, i % N, (i / N) | 0, side));
   arr.sort((a, c) => c.s - a.s);
   return arr.slice(0, k);
 }
-function abSearch(b, ai, side, depth, alpha, beta, ply, t0, budget) {
+function abSearch(b, ai, side, depth, alpha, beta, ply, t0, budget, ext) {
   if (depth <= 0) return evalLeaf(b, ai, side, ply);
-  if (now() - t0 > budget) return evalLeaf(b, ai, side, ply);
-  const cands = topKScored(b, side, K_BY_DEPTH(depth));
+  if (now() - t0 > budget) return null;        // 超时 → 中止本轮迭代，由上层整轮丢弃
+  const cands = topKScored(b, side, K_BY_DEPTH(depth), RADIUS_BY_DEPTH(depth));
   if (!cands.length) return evalLeaf(b, ai, side, ply);
   const maxing = side === ai;
   let val = maxing ? -Infinity : Infinity;
@@ -859,8 +864,14 @@ function abSearch(b, ai, side, depth, alpha, beta, ply, t0, budget) {
     b[c.i] = side;
     let v;
     if (winLine(b, c.x, c.y)) v = maxing ? (WIN_V - ply) : -(WIN_V - ply);
-    else v = abSearch(b, ai, other(side), depth - 1, alpha, beta, ply + 1, t0, budget);
+    else {
+      /* 威胁延伸：成四 / 活三 这类「逼迫手」不消耗深度（受 EXT_LIMIT 限额约束）。
+         五子棋里这是把名义层数等效拉高一倍的关键手段。 */
+      const extend = (ext > 0 && c.m >= T.OTHREE && c.m < T.FIVE) ? 1 : 0;
+      v = abSearch(b, ai, other(side), depth - 1 + extend, alpha, beta, ply + 1, t0, budget, ext - extend);
+    }
     b[c.i] = 0;
+    if (v === null) return null;
     if (maxing) {
       if (v > val) val = v;
       if (val >= beta) return val;
@@ -873,28 +884,31 @@ function abSearch(b, ai, side, depth, alpha, beta, ply, t0, budget) {
   }
   return val;
 }
-function searchBest(b, ai, ordered, depth) {
-  let best = ordered[0], bestV = -Infinity, alpha = -Infinity;
+function searchBest(b, ai, ordered, maxDepth, budget) {
+  let best = ordered[0], bestV = -Infinity;
   const t0 = now();
-  const budget = depth >= 4 ? 900 : 550;
-  for (let d = 1; d <= depth; d++) {
-    let cur = best, curV = -Infinity, alphaD = -Infinity, timedOut = false;
-    for (let ci = 0; ci < ordered.length; ci++) {
-      const c = ordered[ci];
+  /* 迭代加深由「时间预算」驱动：跑满预算或 maxDepth 才停；
+     超时的轮次整体作废、保留上一轮完整结果（不向树中注入异深度的启发式值）。
+     第 1 轮 depth<=0 直接返回 evalLeaf、不经过超时检查，必有保底结果。 */
+  for (let d = 1; d <= maxDepth; d++) {
+    let cur = ordered[0], curV = -Infinity, alphaD = -Infinity, aborted = false;
+    for (const c of ordered) {
       b[c.i] = ai;
       let v;
       if (winLine(b, c.x, c.y)) v = WIN_V;
-      else v = abSearch(b, ai, other(ai), d - 1, alphaD, WIN_V, 1, t0, budget);
+      else v = abSearch(b, ai, other(ai), d - 1, alphaD, WIN_V, 1, t0, budget, EXT_LIMIT);
       b[c.i] = 0;
+      if (v === null) { aborted = true; break; }   // 本轮没跑完 → 整轮丢弃
       if (v > curV) { curV = v; cur = c; }
       if (v > alphaD) alphaD = v;
       if (curV >= WIN_V) break;
-      if ((ci & 3) === 3 && now() - t0 > budget) { timedOut = true; break; }
     }
-    if (timedOut) break;
+    if (aborted) break;
     best = cur; bestV = curV;
-    alpha = Math.max(alpha, curV);
-    if (bestV >= WIN_V - depth) break;   // WIN_V-ply 级的必然胜也可提前收敛
+    if (bestV >= WIN_V - d) break;       // WIN_V-ply 级的必然胜也可提前收敛
+    /* PV 优先：把本轮最佳着法提到最前，下一轮先搜它（Alpha-Beta 最有效的提速手段） */
+    const pos = ordered.indexOf(cur);
+    if (pos > 0) { ordered.splice(pos, 1); ordered.unshift(cur); }
     if (now() - t0 > budget) break;
   }
   return best;
@@ -939,9 +953,10 @@ function chooseAiMove(b, diff, aiP) {
     }
     return best;
   }
-  /* 5. 困难 / 专家：Alpha-Beta 迭代加深 */
-  const depth = diff === 'expert' ? 4 : 3;
-  return searchBest(b, aiP, scored.slice(0, 10), depth);
+  /* 5. 困难 / 专家：Alpha-Beta 迭代加深（深度按时间预算跑满） */
+  const maxDepth = diff === 'expert' ? 12 : 8;
+  const budget = diff === 'expert' ? 900 : 550;
+  return searchBest(b, aiP, scored.slice(0, 12), maxDepth, budget);
 }
 
 /* ============================================================
@@ -1174,10 +1189,9 @@ function endGame(winner, cells) {
     resultText.textContent = '和棋 · 用时 ' + fmt(elapsedMs()) + ' · 共 ' + S.moves.length + ' 手';
   } else {
     const who = playerName(winner);
-    const extra = (S.mode === 'ai')
-      ? (winner === S.side ? ' · 你赢了！' : ' · AI 获胜')
-      : '';
-    resultText.textContent = who + '获胜' + extra + ' · 第 ' + S.moves.length + ' 手 · 用时 ' + fmt(elapsedMs());
+    const head = S.mode !== 'ai' ? who + '获胜'
+      : (winner === S.side ? '你赢了！' : who + '（AI）获胜');
+    resultText.textContent = head + ' · 第 ' + S.moves.length + ' 手 · 用时 ' + fmt(elapsedMs());
   }
   bar.classList.add('show');
   recordResult();
@@ -1535,6 +1549,15 @@ function selfTest() {
   for (let k = 0; k < 4; k++) b[idx(k, 7)] = BLACK;
   const mvP = chooseAiMove(b, 'expert', BLACK);
   assert(mvP && mvP.i === idx(4, 7), '补丁后专家难度仍立即补五');
+
+  /* ---- TW[0]：被包围空点评分不得为 NaN（层级 0 已定义） ---- */
+  assert(TW[0] === 0, 'TW[0] 应为 0');
+  b = makeBoard();
+  for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+    if (dx || dy) b[idx(5 + dx, 7 + dy)] = BLACK;   // 中心空点被黑子团团围住
+  }
+  const scEnc = scoreCell(b, 5, 7, WHITE);
+  assert(scEnc.m === 0 && Number.isFinite(scEnc.s), '被包围空点评分应有限，实际 ' + scEnc.s);
 
   console.log('SELFTEST PASS');
 }
