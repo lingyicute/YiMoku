@@ -28,7 +28,7 @@ Browser gomoku is usually one of two things: a board buried under banner ads, or
   - **Undo** retracts your move *and* the AI's reply as one pair — and even works after the game ends, resuming the clock where it stopped.
   - Live **move counter** and **elapsed-time** clock above the board; timing starts with your first stone.
 - **🤖 An AI That Actually Plays**
-  - **Four difficulties**: **简单 Easy** (noisy, occasionally misses your threats), **中等 Medium** (greedy with a light jitter), **困难 Hard** (alpha–beta, depth 3) and **专家 Expert** (iterative deepening under a time budget).
+  - **Four difficulties**: **简单 Easy** (noisy, occasionally misses your threats), **中等 Medium** (greedy with a light jitter), **困难 Hard** (alpha–beta under a **550 ms** budget) and **专家 Expert** (deeper iterative deepening under a **900 ms** budget).
   - **Choose your side** — take black and open, or take white and let the AI start automatically.
   - The engine classifies stone shapes (open threes, jump fours, double threats…), detects every intersection that completes a five, and resolves **provable wins and losses at the search leaves** — so it is not fooled by the horizon effect.
   - A natural per-difficulty "thinking" pause keeps the opponent feeling human.
@@ -120,12 +120,27 @@ python3 scripts/subset_font.py          # rewrites the @font-face block of index
 
 - The script is **idempotent**: re-running it on an unchanged page produces no diff, and it reports any characters the typeface itself does not contain (which then fall back to the system emoji font).
 
+## 🧪 Testing
+
+The shipped artifact stays exactly as it is — one zero-dependency HTML file. Everything under `tests/` is **development-only** tooling that the browser never loads.
+
+```
+npm install          # dev dependencies (jsdom only)
+npm test             # built-in self-test + DOM smoke test  (~10 s)
+npm run test:bench   # AI strength & latency benchmark      (~1–2 min)
+```
+
+- **`tests/selftest.js`** — *zero-dependency*. Extracts the embedded `<script id="main">` from `index.html` and runs the engine's built-in self-test: win detection in all four directions, shape classification, threat counting and terminal leaf evaluation, the `TW[0]` NaN regression, guaranteed win/block at every difficulty, and a full simulated game.
+- **`tests/smoke.js`** — *needs `npm install`*. Boots the real page inside jsdom and drives it end to end: the first-run help dialog, stone placement, AI replies, undo pairs, mode / difficulty / side switching, theme & palette popovers, record clearing, keyboard play, win highlighting and all three result-bar texts. Without jsdom it prints a skip notice instead of failing, so a bare clone still passes `npm test`.
+- **`tests/bench.js`** — *zero-dependency, slow on purpose*. Plays real AI-vs-AI matches and fails on regression: Expert must beat Easy ≥ 5/6 and Medium ≥ 3/4, and per-move latency must stay inside the engine budgets (550 ms hard / 900 ms expert) plus machine slack. Run it whenever the engine changes.
+
 ## 🤗 Contributing
 
 Contributions are always welcome!
 
 - **Bug Reports & Feature Requests**: submit an issue on the [GitHub Issue Tracker](https://github.com/lingyicute/YiMoku/issues).
 - **Pull Requests**: keep the single-file, zero-dependency philosophy intact and match the existing code style.
+- **Before a PR**: run `npm test` — and `npm run test:bench` if you touched the engine. Both live in `tests/`, are dev-only, and never affect the shipped file.
 - **Translations**: the interface is currently Simplified Chinese — an i18n layer plus translated string tables would be very welcome.
 - **Engine improvements**: opening books, deeper search, or Renju-style forbidden-move rules are all interesting directions.
 
