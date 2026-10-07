@@ -76,8 +76,10 @@ html{-webkit-text-size-adjust:100%}
   --glow2:hsl(var(--ah) calc(var(--asl) + 8%) 82% / .10);
   --shadow:0 10px 30px rgba(52,38,96,.09);
   --shadow-sm:0 4px 14px rgba(52,38,96,.07);
-  --stone1:radial-gradient(circle at 32% 28%,#4F4670 0%,#241D40 58%,#151027 100%);
-  --stone2:radial-gradient(circle at 32% 28%,#FFFFFF 0%,#F1ECFB 62%,#DAD3EF 100%);
+  --stone1:radial-gradient(circle at 30% 26%,#4B426B 0%,#241C3E 60%,#120D23 100%);
+  --stone2:radial-gradient(circle at 30% 26%,#FFFFFF 0%,#F4F0FC 55%,#DAD2EC 100%);
+  --stone1-shadow:0 3px 8px rgba(16,10,32,.38), 0 1px 3px rgba(16,10,32,.25);
+  --stone2-shadow:0 0 0 1px rgba(70,55,110,.28), 0 3px 8px rgba(35,25,65,.24), inset 0 -2.5px 5px rgba(90,75,135,.22);
   --kbd-bg:#FFFFFF;
   --pop-bg:rgba(40,30,70,.32);
 }
@@ -99,8 +101,10 @@ html{-webkit-text-size-adjust:100%}
   --glow2:hsl(var(--ah) var(--as) 64% / .09);
   --shadow:0 12px 34px rgba(0,0,0,.4);
   --shadow-sm:0 5px 16px rgba(0,0,0,.3);
-  --stone1:radial-gradient(circle at 32% 28%,#3E3660 0%,#17121F 60%,#0D0A14 100%);
-  --stone2:radial-gradient(circle at 32% 28%,#FAF8FF 0%,#E6E0F4 62%,#C7BFDE 100%);
+  --stone1:radial-gradient(circle at 30% 26%,#5A507C 0%,#241C34 50%,#100C1A 100%);
+  --stone2:radial-gradient(circle at 30% 26%,#FFFFFF 0%,#ECE5FA 58%,#C4BCDF 100%);
+  --stone1-shadow:0 0 0 1px rgba(255,255,255,.16), 0 4px 10px rgba(0,0,0,.65), inset 0 1px 1.5px rgba(255,255,255,.24);
+  --stone2-shadow:0 0 0 1px rgba(0,0,0,.35), 0 4px 10px rgba(0,0,0,.45), inset 0 -2px 4px rgba(70,55,110,.25);
   --kbd-bg:#2B2440;
   --pop-bg:rgba(8,6,14,.55);
 }
@@ -243,9 +247,8 @@ header{
   transition:transform .16s cubic-bezier(.25,1.5,.45,1), opacity .12s;
 }
 .cell.on .s{transform:scale(1); opacity:1}
-.cell.on1 .s{background:var(--stone1); box-shadow:0 3px 7px rgba(10,6,26,.3)}
-.cell.on2 .s{background:var(--stone2); box-shadow:0 3px 7px rgba(10,6,26,.22),
-  inset 0 -2px 4px rgba(90,80,130,.18); border:1px solid hsl(var(--ah) 30% 60% / .25)}
+.cell.on1 .s{background:var(--stone1); box-shadow:var(--stone1-shadow)}
+.cell.on2 .s{background:var(--stone2); box-shadow:var(--stone2-shadow)}
 .cell.last .s::after{
   content:""; position:absolute; left:50%; top:50%; width:7px; height:7px;
   margin:-3.5px 0 0 -3.5px; border-radius:50%; background:var(--accent);
@@ -305,9 +308,8 @@ header{
 .card-t{font-size:13.5px; font-weight:800; color:var(--text3); letter-spacing:1.5px; margin:0 0 10px}
 .statusline{display:flex; align-items:center; gap:11px; font-size:17.5px; font-weight:800; min-height:32px}
 .mini{width:24px; height:24px; border-radius:50%; flex:none}
-.mini.on1{background:var(--stone1); box-shadow:0 2px 5px rgba(10,6,26,.35)}
-.mini.on2{background:var(--stone2); box-shadow:0 2px 5px rgba(10,6,26,.25);
-  border:1px solid hsl(var(--ah) 30% 60% / .3)}
+.mini.on1{background:var(--stone1); box-shadow:var(--stone1-shadow)}
+.mini.on2{background:var(--stone2); box-shadow:var(--stone2-shadow)}
 .status-sub{font-size:13.5px; color:var(--text2); margin-top:6px; font-weight:600}
 .tdot{display:inline-block; animation:blink 1.2s infinite both; font-weight:900}
 .tdot:nth-child(2){animation-delay:.2s}
