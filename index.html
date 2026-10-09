@@ -36,8 +36,14 @@
 /* ============================================================
    YiMoku Web — Material You 风格 · 单文件纯原生 CSS/JS
    ============================================================ */
-*,*::before,*::after{box-sizing:border-box}
-html{-webkit-text-size-adjust:100%}
+*,*::before,*::after{
+  box-sizing:border-box;
+  -webkit-tap-highlight-color:transparent;
+}
+html{
+  -webkit-text-size-adjust:100%;
+  -webkit-touch-callout:none;
+}
 [hidden]{display:none !important}
 
 :root{
@@ -114,6 +120,7 @@ body{
   background:var(--bg); color:var(--text);
   min-height:100vh; overflow-x:hidden;
   -webkit-font-smoothing:antialiased;
+  -webkit-user-select:none; user-select:none;
   transition:background-color .25s,color .25s;
 }
 #glow{
