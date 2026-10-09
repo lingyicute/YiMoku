@@ -1,0 +1,21 @@
+{
+  "name": "yimoku",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Dev-only tooling for the YiMoku test suite. The game itself ships as one zero-dependency HTML file — this package never affects what the browser loads.",
+  "license": "AGPL-3.0",
+  "author": "lingyicute",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/lingyicute/YiMoku.git"
+  },
+  "scripts": {
+    "test": "node tests/selftest.js && node tests/smoke.js",
+    "test:selftest": "node tests/selftest.js",
+    "test:smoke": "node tests/smoke.js",
+    "test:bench": "node tests/bench.js"
+  },
+  "devDependencies": {
+    "jsdom": "^29.1.1"
+  }
+}
