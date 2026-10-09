@@ -133,11 +133,18 @@ body{
 
 /* ---------------- 顶栏 ---------------- */
 header{
+  width:100%; position:relative; z-index:40;
+  transition:background-color .25s;
+}
+[data-theme="dark"] header{
+  background:var(--bg2);
+  box-shadow:0 1px 0 hsl(var(--ah) 30% 30% / .25);
+}
+.header-inner{
+  max-width:1120px; margin:0 auto; padding:0 18px;
   display:flex; align-items:center; justify-content:space-between;
   height:var(--header-h); gap:12px;
 }
-[data-theme="dark"] header{background:var(--bg2); margin:0 -18px; padding:0 18px;
-  box-shadow:0 1px 0 hsl(var(--ah) 30% 30% / .25)}
 .brand{display:flex; align-items:center; gap:12px; min-width:0}
 .logo{
   width:46px; height:46px; border-radius:15px; flex:none;
@@ -447,10 +454,10 @@ kbd{
 </head>
 <body>
 <div id="glow"></div>
-<div id="app">
 
-  <!-- ================= 顶栏 ================= -->
+  <!-- ================= 顶栏（全宽视口容器） ================= -->
   <header>
+    <div class="header-inner">
     <div class="brand">
       <div class="logo" aria-hidden="true">
         <svg viewBox="0 0 24 24" fill="currentColor">
@@ -498,7 +505,10 @@ kbd{
         </button>
       </div>
     </div>
+    </div>
   </header>
+
+<div id="app">
 
   <!-- ================= 主体 ================= -->
   <div class="layout">
