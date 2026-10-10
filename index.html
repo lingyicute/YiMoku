@@ -2102,7 +2102,9 @@ const S = {
   cursor: { x: 7, y: 7 }, cursorVisible: false,
   started: false, timerRun: false, t0: 0, acc: 0,
   aiThinking: false, aiTimer: null,
-  records: freshRecords(), prevLast: -1
+  aiWorker: null, aiReqId: 0,
+  records: freshRecords(), prevLast: -1, prevCursor: -1,
+  lastRecordSnapshot: null
 };
 
 let $ = id => document.getElementById(id);
@@ -2284,9 +2286,12 @@ function syncBoardState() {
   boardEl.classList.toggle('human', !S.over && !S.aiThinking && isHuman(t));
   boardEl.classList.toggle('over', S.over);
   boardEl.classList.toggle('showcur', S.cursorVisible && !S.over && !S.aiThinking && isHuman(t));
-  const cc = cellsEl[idx(S.cursor.x, S.cursor.y)];
-  cellsEl.forEach(el => el.classList.remove('cursor'));
-  if (cc) cc.classList.add('cursor');
+  const curIdx = S.cursorVisible && !S.over && !S.aiThinking && isHuman(t) ? idx(S.cursor.x, S.cursor.y) : -1;
+  if (S.prevCursor !== curIdx) {
+    if (S.prevCursor >= 0 && cellsEl[S.prevCursor]) cellsEl[S.prevCursor].classList.remove('cursor');
+    if (curIdx >= 0 && cellsEl[curIdx]) cellsEl[curIdx].classList.add('cursor');
+    S.prevCursor = curIdx;
+  }
 }
 
 /* ---------- 状态卡 ---------- */
@@ -2365,6 +2370,7 @@ function renderRecords() {
     : '暂无记录';
 }
 function recordResult() {
+  S.lastRecordSnapshot = JSON.parse(JSON.stringify(S.records));
   const r = S.records;
   r.total++;
   if (S.mode === 'ai') {
@@ -2435,8 +2441,39 @@ function endGame(winner, cells) {
   bar.classList.add('show');
   recordResult();
 }
+function initAiWorker() {
+  if (typeof Worker === "undefined" || typeof Blob === "undefined") return;
+  try {
+    const mainScript = document.getElementById("main");
+    if (!mainScript) return;
+    const src = mainScript.textContent;
+    const cut = src.indexOf("/* ============================================================\n   应用层（浏览器）");
+    const engineCode = cut > 0 ? src.slice(0, cut) : src;
+    const workerScript = engineCode + "\n" +
+      "self.onmessage = function(e) {\n" +
+      "  const d = e.data;\n" +
+      "  if (d && d.type === \x27chooseMove\x27) {\n" +
+      "    const mv = chooseAiMove(d.board, d.diff, d.aiP);\n" +
+      "    self.postMessage({ id: d.id, mv: mv });\n" +
+      "  }\n" +
+      "};\n";
+    const blob = new Blob([workerScript], { type: "text/javascript" });
+    const url = URL.createObjectURL(blob);
+    S.aiWorker = new Worker(url);
+    S.aiWorker.onmessage = function(e) {
+      const data = e.data;
+      if (!data || data.id !== S.aiReqId) return;
+      if (S.over) { S.aiThinking = false; updateStatus(); return; }
+      S.aiThinking = false;
+      if (data.mv) doMove(data.mv.x, data.mv.y);
+    };
+  } catch (e) {
+    S.aiWorker = null;
+  }
+}
 function cancelAI() {
   if (S.aiTimer) { clearTimeout(S.aiTimer); S.aiTimer = null; }
+  S.aiReqId++; // 作废任何在途 Worker 搜索请求
   S.aiThinking = false;
 }
 function scheduleAI() {
@@ -2446,12 +2483,20 @@ function scheduleAI() {
   S.aiThinking = true;
   updateStatus();
   const delay = { easy: 180, medium: 260, hard: 340, expert: 420 }[S.diff] || 260;
+  const currentReq = ++S.aiReqId;
+  const boardCopy = S.board.slice();
+  const diff = S.diff;
   S.aiTimer = setTimeout(() => {
     S.aiTimer = null;
-    if (S.over) { S.aiThinking = false; return; }
-    const mv = chooseAiMove(S.board, S.diff, p);
-    S.aiThinking = false;
-    if (mv) doMove(mv.x, mv.y);
+    if (S.over || currentReq !== S.aiReqId) { S.aiThinking = false; return; }
+    if (S.aiWorker) {
+      S.aiWorker.postMessage({ id: currentReq, type: 'chooseMove', board: boardCopy, diff: diff, aiP: p });
+    } else {
+      const mv = chooseAiMove(boardCopy, diff, p);
+      if (currentReq !== S.aiReqId) return;
+      S.aiThinking = false;
+      if (mv) doMove(mv.x, mv.y);
+    }
   }, delay);
 }
 function tryPlace(x, y) {
@@ -2482,6 +2527,12 @@ function undo() {
   }
   markLast(S.moves.length ? S.moves[S.moves.length - 1].i : -1);
   markWin(null);
+  if (wasOver && S.lastRecordSnapshot) {
+    S.records = S.lastRecordSnapshot;
+    S.lastRecordSnapshot = null;
+    store.setJSON('records', S.records);
+    renderRecords();
+  }
   S.over = false; S.winner = 0;
   resultBar.classList.remove('show');
   if (wasOver && S.started) startTimer();            // 撤销后继续计时
@@ -2495,7 +2546,7 @@ function restartGame() {
   stopTimer(); S.acc = 0;
   markWin(null); markLast(-1);
   for (let i = 0; i < N * N; i++) { if (cellsEl[i].classList.contains('on')) paintCell(i); cellsEl[i].classList.remove('cursor', 'win', 'last'); }
-  S.prevLast = -1;
+  S.prevLast = -1; S.prevCursor = -1; S.lastRecordSnapshot = null;
   resultBar.classList.remove('show');
   timeVal.textContent = '00:00';
   updateStats(); renderMoveList(); updateStatus();
@@ -2609,6 +2660,7 @@ function init() {
   buildSwatches();
   syncPills();
   renderRecords();
+  initAiWorker();
   restartGame();
 
   /* 主题 */
