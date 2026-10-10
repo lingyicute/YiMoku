@@ -155,6 +155,29 @@ const click = el => el.dispatchEvent(new window.MouseEvent('click', { bubbles: t
   assert($('resultText').textContent === '白棋获胜 · 第 7 手 · 用时 00:00',
     '双人获胜 → x棋获胜（实际：' + $('resultText').textContent + '）');
 
+  /* ---- 终局悔棋战绩回滚测试 ---- */
+  window.eval(`
+    restartGame();
+    S.mode = "ai"; S.side = 1;
+    const initialWins = S.records.ai.win;
+    const initialTotal = S.records.total;
+    for (let k = 0; k < 5; k++) {
+      doMove(k, 0);
+      if (k < 4) doMove(k, 1);
+    }
+    if (S.records.ai.win !== initialWins + 1 || S.records.total !== initialTotal + 1) {
+      throw new Error("结算后战绩未正确递增");
+    }
+    undo();
+    if (S.records.ai.win !== initialWins || S.records.total !== initialTotal) {
+      throw new Error("终局悔棋后战绩未正确回滚");
+    }
+    doMove(4, 0);
+    if (S.records.ai.win !== initialWins + 1 || S.records.total !== initialTotal + 1) {
+      throw new Error("悔棋后再次获胜战绩应只计一次");
+    }
+  `);
+
   kd('r');
   assert(document.querySelectorAll('.cell.on').length === 0, 'R 键重开清盘');
   assert(!$('resultBar').classList.contains('show'), '结果条隐藏');
