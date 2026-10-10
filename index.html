@@ -1957,18 +1957,18 @@ function chooseAiMove(b, diff, aiP) {
   if (winCell) return winCell;
   /* 2. 必挡（难度越高越可靠） */
   if (blockCell) {
-    if (diff === 'easy') { if (Math.random() < 0.62) return blockCell; }
+    if (diff === 'easy') { if (Math.random() < 0.82) return blockCell; }
     else return blockCell;
   }
   scored.sort((a, c) => c.s - a.s);
-  /* 3. 简单：在前排候选中带噪声地挑选 */
+  /* 3. 简单：在前排候选中带噪声地挑选（收拢候选范围，避免纯瞎走） */
   if (diff === 'easy') {
     const r = Math.random();
-    const top = Math.min(9, scored.length);
+    const top = Math.min(6, scored.length);
     let rank;
-    if (r < 0.55) rank = Math.floor(Math.random() * Math.min(3, top));
-    else if (r < 0.82) rank = Math.floor(Math.random() * top);
-    else rank = Math.floor(Math.random() * scored.length);
+    if (r < 0.70) rank = Math.floor(Math.random() * Math.min(2, top));
+    else if (r < 0.92) rank = Math.floor(Math.random() * top);
+    else rank = Math.floor(Math.random() * Math.min(10, scored.length));
     return scored[Math.min(rank, scored.length - 1)];
   }
   /* 4. 中等：贪心 + 轻微扰动 */
