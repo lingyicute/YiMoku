@@ -9,7 +9,7 @@ Made with ❤️ by [lingyicute](https://github.com/lingyicute).
 [🇺🇸 English] • [🌐 Source Code](https://github.com/lingyicute/YiMoku) • [🐛 Report Bug](https://github.com/lingyicute/YiMoku/issues)
 
 [![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0-orange.svg)](https://github.com/lingyicute/YiMoku/blob/main/LICENSE)
-[![Single File 126 KB](https://img.shields.io/badge/Single%20File-126%20KB-blue)](https://github.com/lingyicute/YiMoku/blob/main/index.html)
+[![Single File ~187 KB](https://img.shields.io/badge/Single%20File-~187%20KB-blue)](https://github.com/lingyicute/YiMoku/blob/main/index.html)
 [![Zero Dependencies](https://img.shields.io/badge/Dependencies-Zero-brightgreen)](https://github.com/lingyicute/YiMoku)
 [![No Ads No Tracking](https://img.shields.io/badge/Ads%20%26%20Trackers-Zero-brightgreen)](https://github.com/lingyicute/YiMoku)
 [![GitHub Stars](https://img.shields.io/github/stars/lingyicute/YiMoku?style=flat&color=yellow)](https://github.com/lingyicute/YiMoku)
@@ -61,7 +61,7 @@ Hard and Expert don't guess — they search. Candidate moves are restricted to t
 
 ### 3. Difficulty as a Spectrum, Not a Switch
 
-Easy and Medium are *designed* to be beatable: Easy only blocks your winning five ~62% of the time and picks noisily among the top-scored candidates, while Medium plays greedy with ±7% jitter. The result is an opponent that ramps from casual to punishing without ever changing the rules.
+Easy and Medium are *designed* to be beatable: Easy only blocks your winning five ~62% of the time and picks noisily among the top-scored candidates, while Medium plays greedy with ±3.5% jitter. The result is an opponent that ramps from casual to punishing without ever changing the rules.
 
 ### 4. Zero-Dependency, Zero-Network Architecture
 
@@ -111,7 +111,7 @@ cd YiMoku
 
 ### Regenerating the embedded font subset
 
-The page embeds a ~43.8 KB subset (362 glyphs) of the 1.25 MB "Nebulove" typeface instead of linking it from a CDN, which is what keeps the "zero network requests" promise. When you add or change **user-visible text**, regenerate the subset — otherwise the new characters are simply not in the font and fall back to a system font:
+The page embeds a ~35.6 KB subset (308 glyphs) of the 1.25 MB "Nebulove" typeface instead of linking it from a CDN, which is what keeps the "zero network requests" promise. When you add or change **user-visible text**, regenerate the subset — otherwise the new characters are simply not in the font and fall back to a system font:
 
 ```
 pip install fonttools brotli
