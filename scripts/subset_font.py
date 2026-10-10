@@ -133,13 +133,13 @@ def main():
         print("⚠️ 字体本身不含这些字符（将回退到系统字体）：%s" %
               " ".join("U+%04X" % ord(c) for c in sorted(missing)))
 
+    if args.check:
+        print("--check：不写入页面及子集文件。")
+        return
+
     keep = os.path.join(HERE, "Nebulove-subset.woff2") 
     open(keep, "wb").write(wofl)
     print("子集文件：%s" % keep)
-
-    if args.check:
-        print("--check：不写入页面。")
-        return
     b64 = base64.b64encode(wofl).decode("ascii")
     new_face = make_font_face(b64, len(wofl) / 1024, len(b64) / 1024, len(covered), mode)
     new_html, n = FONT_FACE_RE.subn(new_face, html, count=1)
