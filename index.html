@@ -1805,26 +1805,43 @@ function playStoneSound(isWhite) {
     if (audioCtx.state === 'suspended') audioCtx.resume();
     const t = audioCtx.currentTime;
 
-    // 清脆落盘敲击声（双振荡器微衰减模拟玉石撞击）
-    const osc1 = audioCtx.createOscillator();
-    const osc2 = audioCtx.createOscillator();
-    const gain = audioCtx.createGain();
+    // 1. 碰撞瞬态（Click）：极短带通噪声脉冲（约 7ms），营造清脆利落的“哒/啪”声
+    const bufLen = Math.max(1, Math.floor(audioCtx.sampleRate * 0.007));
+    const noiseBuf = audioCtx.createBuffer(1, bufLen, audioCtx.sampleRate);
+    const out = noiseBuf.getChannelData(0);
+    for (let i = 0; i < bufLen; i++) out[i] = Math.random() * 2 - 1;
 
-    const freq1 = isWhite ? 860 : 780;
-    const freq2 = isWhite ? 1280 : 1150;
+    const noiseSrc = audioCtx.createBufferSource();
+    noiseSrc.buffer = noiseBuf;
 
-    osc1.type = 'sine'; osc1.frequency.setValueAtTime(freq1, t);
-    osc1.frequency.exponentialRampToValueAtTime(140, t + 0.08);
+    const filter = audioCtx.createBiquadFilter();
+    filter.type = 'bandpass';
+    filter.frequency.setValueAtTime(isWhite ? 3200 : 2700, t);
+    filter.Q.setValueAtTime(3.0, t);
 
-    osc2.type = 'triangle'; osc2.frequency.setValueAtTime(freq2, t);
-    osc2.frequency.exponentialRampToValueAtTime(220, t + 0.04);
+    const noiseGain = audioCtx.createGain();
+    noiseGain.gain.setValueAtTime(0.42, t);
+    noiseGain.gain.exponentialRampToValueAtTime(0.001, t + 0.007);
 
-    gain.gain.setValueAtTime(0.35, t);
-    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.09);
+    noiseSrc.connect(filter);
+    filter.connect(noiseGain);
+    noiseGain.connect(audioCtx.destination);
+    noiseSrc.start(t);
 
-    osc1.connect(gain); osc2.connect(gain); gain.connect(audioCtx.destination);
-    osc1.start(t); osc2.start(t);
-    osc1.stop(t + 0.09); osc2.stop(t + 0.09);
+    // 2. 棋子落盘微弱实心共鸣（Body）：固定音高正弦波，32ms 极快衰减，杜绝滑频激光感
+    const osc = audioCtx.createOscillator();
+    const oscGain = audioCtx.createGain();
+    const baseFreq = isWhite ? 580 : 510;
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(baseFreq, t);
+
+    oscGain.gain.setValueAtTime(0.25, t);
+    oscGain.gain.exponentialRampToValueAtTime(0.001, t + 0.032);
+
+    osc.connect(oscGain);
+    oscGain.connect(audioCtx.destination);
+    osc.start(t);
+    osc.stop(t + 0.033);
   } catch (e) {}
 }
 
