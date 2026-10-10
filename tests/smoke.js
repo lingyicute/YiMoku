@@ -44,7 +44,7 @@ const click = el => el.dispatchEvent(new window.MouseEvent('click', { bubbles: t
   /* ---- 初始化 ---- */
   assert(document.querySelectorAll('.cell').length === 225, '应生成 225 个棋盘格');
   assert(document.documentElement.dataset.theme === 'light', '默认浅色主题');
-  assert($('titleSub').textContent.includes('15×15'), '副标题包含棋盘尺寸');
+  assert($('titleSub').textContent === '人机对战 · 简单', '默认副标题：人机对战 · 简单');
   assert($('modalHelp').classList.contains('open'), '首次访问自动打开玩法说明');
   click($('helpOk'));
   assert(!$('modalHelp').classList.contains('open'), '点击「知道了」关闭说明');
@@ -59,6 +59,10 @@ const click = el => el.dispatchEvent(new window.MouseEvent('click', { bubbles: t
   stones = [...document.querySelectorAll('.cell')].filter(c => c.classList.contains('on'));
   assert(stones.length === 2, 'AI 已应手（共 2 子）');
   assert($('mList').children.length === 2, '棋谱 2 条');
+  // 点击棋谱第 1 条，断言对应格子获得 .flash 高亮类
+  click($('mList').children[0]);
+  const firstStone = document.querySelector('.cell.on1');
+  assert(firstStone && firstStone.classList.contains('flash'), '点击棋谱项应触发棋子高亮闪烁');
   assert($('statusText').textContent.includes('轮到你'), '状态回到玩家回合');
 
   /* ---- 撤销（人机模式撤一对） ---- */
@@ -70,6 +74,7 @@ const click = el => el.dispatchEvent(new window.MouseEvent('click', { bubbles: t
   /* ---- 双人模式 ---- */
   click(document.querySelector('[data-mode="pvp"]'));
   assert($('diffRow').hidden && $('sideRow').hidden, '双人模式隐藏难度/执子行');
+  assert($('titleSub').textContent === '双人同屏', '双人模式副标题：双人同屏');
   click(document.querySelector('.cell[data-x="3"][data-y="3"]'));
   click(document.querySelector('.cell[data-x="4"][data-y="4"]'));
   assert(document.querySelectorAll('.cell.on').length === 2, '双人交替落子');
@@ -91,7 +96,7 @@ const click = el => el.dispatchEvent(new window.MouseEvent('click', { bubbles: t
   assert(document.querySelectorAll('.cell.on').length === 2, '切回执黑后重新对局');
   click(document.querySelector('[data-diff="expert"]'));
   assert(document.querySelectorAll('.cell.on').length === 0, '切换难度自动重开空盘');
-  assert($('titleSub').textContent.startsWith('专家'), '副标题 = 专家');
+  assert($('titleSub').textContent === '人机对战 · 专家', '副标题切至：人机对战 · 专家');
   click(document.querySelector('.cell[data-x="7"][data-y="7"]'));
   await sleep(2200);   // 专家：延迟 420ms + 搜索预算 900ms
   assert(document.querySelectorAll('.cell.on').length === 2, '专家 AI 正常应手');
@@ -108,6 +113,12 @@ const click = el => el.dispatchEvent(new window.MouseEvent('click', { bubbles: t
 
   /* ---- 菜单与弹窗 ---- */
   click($('menuBtn'));
+  assert($('soundText').textContent === '落子音效：开', '默认音效开');
+  click($('mSound'));
+  assert($('soundText').textContent === '落子音效：关', '切换音效关');
+  assert(window.localStorage.getItem('yimoku:sound') === '0', '持久化音效关闭');
+  click($('mSound'));
+  assert($('soundText').textContent === '落子音效：开', '切回音效开');
   click($('mRecords'));
   assert($('modalRecords').classList.contains('open'), '最佳成绩弹窗');
   click($('recClose'));
