@@ -699,7 +699,7 @@ const now = () => (typeof performance !== 'undefined' ? performance.now() : Date
                       candidateList 改用 stamp 复用（消掉每节点一次的 225B 分配）。
                       语义与旧实现逐位一致（对拍脚本验证）。 */
 const AI_VCF = true, AI_TIME_AWARE = true, AI_FAST_TOPK = true;
-const AI_TT = true, AI_THREAT_GATE = true, AI_FAST_LEAF = true;
+const AI_TT = true, AI_FAST_LEAF = true;
 /* ⑪ 活三准胜判据收紧为「能补成活四」（见 openThreeCount 处说明）。纯判据修正。
    AI_VCF_GUARD   ⑩ 送杀检查：落子前确认没有把对手可证明的连冲四杀放上棋盘。 */
 const AI_OPENTHREE_STRICT = true, AI_VCF_GUARD = true;
@@ -714,6 +714,12 @@ const AI_LINE_CAND = true, AI_KILLER = true, AI_TT_DEPTH = true;
 /* ⑳ VCT（连续威胁搜索，见 vctRoot 处说明）。VCF 的超集：允许攻方造活三，
       因此「三 → 活四 → 五」这类最常见的中盘强制胜也能直接证明，而不是靠深度撞见。 */
 const AI_VCT = true;
+/* ㉑ 
+   AI_LEAF_S3    叶节点单活三准胜：轮走方持有严格活三、且对方在盘上没有连五点时，
+                 「三→活四→五」是可证明的强制胜（与 evalForcedLine 的既有 ⑬ 判据对齐）。
+                 要求 AI_OPENTHREE_STRICT 同时开启——非严格活三转不成活四，准胜不成立。
+   AI_JUMP_EXT   跳活三（BROKEN 且伴生 hi≥1）与连活三同等威胁延伸。 */
+const AI_LEAF_S3 = true, AI_JUMP_EXT = true;
 
 /* ---------- 层级权重（启发式评分） ---------- */
 const T = { NONE: 0, ONE: 1, TWO: 2, OTWO: 3, THREE: 4, BROKEN: 5, OTHREE: 6, FOUR: 7, OFOUR: 8, FIVE: 9 };
@@ -1224,9 +1230,16 @@ function evalLeaf(b, ai, side, ply) {
      ★ 修复：必须加 oppFives === 0 门控。对方恰有 1 个连五点（冲四）时，
      「双活三 → 3 手成五」不再可证明：对方 1 手即连五，快过我方 三→活四→五
      的 2 手；我方要么先挡五（先手权易手，双活三攻势被打断），要么被直接连五。 */
+  /* ㉑ 单活三准胜（可证明）：能执行到这里 oFive 必为 0（=1 走强制挡线、≥2 已判负，
+     见上）——轮走方持严格活三、下手补成活四，对方在盘上没有连五点就只能挡其一，
+     再下手即连五。这是 evalForcedLine 里 ⑬ 判据在 evalLeaf 的对齐：此前 evalLeaf
+     要求双活三才判准胜，把最常见的单活三攻击在地平线处误判成了静态小优。
+     优先级高于对方双活三（己方 3 ply 即胜，快过对方任何 4+ ply 的反杀）。
+     非严格活三转不成活四，故以 AI_OPENTHREE_STRICT 为门控（关闭时退回旧的双活三判据）。 */
+  const S3_NEED = (AI_LEAF_S3 && AI_OPENTHREE_STRICT) ? 1 : 2;
   for (let j = 0, c3 = 0; j < n3S; j++) {
     c3 += openThreeOnLine(b, LINES[L3_SIDE[j]], side);
-    if (c3 >= 2) return maxing ? (WIN_V / 4 - ply) : -(WIN_V / 4 - ply);
+    if (c3 >= S3_NEED) return maxing ? (WIN_V / 4 - ply) : -(WIN_V / 4 - ply);
   }
   for (let j = 0, c3 = 0; j < n3O; j++) {
     c3 += openThreeOnLine(b, LINES[L3_OTH[j]], oth);
@@ -1665,13 +1678,13 @@ function topKScored(b, side, k, radius) {
   const cl = candidateList(b, radius);
   if (k > K_MAX) k = K_MAX;
   const oth = other(side);
-  let m = 0, blkI = -1, blkM = 0, blkS = -Infinity;
+  let m = 0, blkI = -1, blkM = 0, blkS = -Infinity, blkH = 0;
   for (let q = 0; q < cl.length; q++) {
     const i = cl[q], x = i % N, y = (i / N) | 0;
     pointTierEx(b, x, y, side);
-    const mm = P_RES.t;
+    const mm = P_RES.t, mh = P_RES.hi;
     /* ⑮ 必胜手短路：若当前方存在直接连五点，任何其他候选均不可能更优，立即返回。 */
-    if (mm === T.FIVE) return [{ x, y, i, m: T.FIVE, o: 0, s: TW[T.FIVE] }];
+    if (mm === T.FIVE) return [{ x, y, i, m: T.FIVE, o: 0, s: TW[T.FIVE], h: 0 }];
     const sm = TW[mm] * dualMult(P_RES.hi, P_RES.mid);
     pointTierEx(b, x, y, oth);
     const oo = P_RES.t, so = TW[oo] * dualMult(P_RES.hi, P_RES.mid);
@@ -1679,7 +1692,7 @@ function topKScored(b, side, k, radius) {
     /* 必挡手收缩：对方存在连五点（oo===T.FIVE）且我方无 FIVE 时，不挡必在下层被连五，
        只保留最高分的挡点（双威胁时挡完由下层再判负，与搜 K 个弃挡分支等价且省去无效子树）。 */
     if (oo === T.FIVE) {
-      if (sv > blkS) { blkI = i; blkM = mm; blkS = sv; }
+      if (sv > blkS) { blkI = i; blkM = mm; blkS = sv; blkH = mh; }
       continue;
     }
     if (blkI >= 0) continue;
@@ -1691,22 +1704,22 @@ function topKScored(b, side, k, radius) {
       if (m < k) m++;
       let j = m - 1;
       while (j > 0 && (KS[j - 1] < sv || (KS[j - 1] === sv && KI[j - 1] > i))) {
-        KS[j] = KS[j - 1]; KI[j] = KI[j - 1]; KM[j] = KM[j - 1]; KO[j] = KO[j - 1]; j--;
+        KS[j] = KS[j - 1]; KI[j] = KI[j - 1]; KM[j] = KM[j - 1]; KO[j] = KO[j - 1]; KH[j] = KH[j - 1]; j--;
       }
-      KS[j] = sv; KI[j] = i; KM[j] = mm; KO[j] = oo;
+      KS[j] = sv; KI[j] = i; KM[j] = mm; KO[j] = oo; KH[j] = mh;
     }
   }
-  if (blkI >= 0) return [{ x: blkI % N, y: (blkI / N) | 0, i: blkI, m: blkM, o: T.FIVE, s: blkS }];
+  if (blkI >= 0) return [{ x: blkI % N, y: (blkI / N) | 0, i: blkI, m: blkM, o: T.FIVE, s: blkS, h: blkH }];
   const out = new Array(m);
   for (let j = 0; j < m; j++) {
     const i = KI[j];
-    out[j] = { x: i % N, y: (i / N) | 0, i, m: KM[j], o: KO[j], s: KS[j] };
+    out[j] = { x: i % N, y: (i / N) | 0, i, m: KM[j], o: KO[j], s: KS[j], h: KH[j] };
   }
   return out;
 }
 const K_MAX = 8;
 const KS = new Float64Array(K_MAX), KI = new Int32Array(K_MAX),
-      KM = new Int32Array(K_MAX), KO = new Int32Array(K_MAX);
+      KM = new Int32Array(K_MAX), KO = new Int32Array(K_MAX), KH = new Int32Array(K_MAX);
 
 /* ============================================================
    ④ Zobrist 置换表
@@ -1835,7 +1848,9 @@ function abSearch(b, ai, side, depth, alpha, beta, ply, t0, budget, ext) {
     b[c.i] = side;
     /* 威胁延伸：成四 / 活三 这类「逼迫手」不消耗深度（受 EXT_LIMIT 限额约束）。
        五子棋里这是把名义层数等效拉高一倍的关键手段。 */
-    const extend = (ext > 0 && c.m >= T.OTHREE && c.m < T.FIVE) ? 1 : 0;
+    /* ㉑ 跳活三（BROKEN 但伴生 hi≥1，见 pointTierEx 的 isJumpOpen3）与连活三同等逼迫，
+       同样延伸；(c.h|0) 兼容无 h 字段的旧对象（缺省 0，即旧行为）。 */
+    const extend = (ext > 0 && c.m < T.FIVE && (c.m >= T.OTHREE || (AI_JUMP_EXT && (c.h | 0) >= 1))) ? 1 : 0;
     const nd = depth - 1 + extend, os = other(side);
     let v;
     if (q === 0) {
@@ -2002,6 +2017,7 @@ function chooseAiMove(b, diff, aiP) {
     if (vp) return { x: vp.i % N, y: (vp.i / N) | 0, i: vp.i, m: T.FIVE, o: 0, s: WIN_V, vct: !!vp.vct, vcf: vp.len };
   }
   HIST.fill(0);                                   // ⑧ 每手棋重新累积历史
+  KILL.fill(-1);                                  // ㉑ 杀手着法同样按手清零：上一步残留的同层杀手已与新局面无关，只剩排序噪声
   const root12 = scored.slice(0, 12);
   /* ⑩ 给送杀检查留出专属时间：不给它留，searchBest 一定会把预算花到只剩几毫秒，
      闸门就永远等于关着。搜少 100ms 换一道保命闸，对深度几乎无影响。 */
@@ -2943,7 +2959,19 @@ function selfTest() {
   b = makeBoard();
   b[idx(3,7)] = b[idx(4,7)] = b[idx(6,7)] = BLACK;      // _XX_X_（两端空）
   assert(openThreeCount(b, BLACK, 8) === 1, '跳三 _XX_X_ 应计为活三');
-  assert(evalLeaf(b, BLACK, BLACK, 2) === evalBoard(b, BLACK), '单个跳三不触发双活三准胜');
+  /* ㉑ 单个（跳）活三即准胜：轮走方三→活四→五可证明，对方无连五点时必败 */
+  assert(evalLeaf(b, BLACK, BLACK, 2) === WIN_V / 4 - 2, '单个跳三应判准胜 WIN_V/4-ply');
+  b = makeBoard();
+  b[idx(3,7)] = b[idx(4,7)] = b[idx(5,7)] = BLACK;      // 黑连活三 _XXX_（两端及外端均空）
+  b[idx(8,2)] = b[idx(9,2)] = b[idx(10,2)] = WHITE;      // 白横向活三
+  b[idx(12,5)] = b[idx(12,6)] = b[idx(12,7)] = WHITE;    // 白纵向活三
+  assert(openThreeCount(b, WHITE, 8) === 2, '优先级测试：白应持双活三');
+  assert(fiveThreatCount(b, WHITE) === 0 && fiveThreatCount(b, BLACK) === 0, '优先级测试：双方均无连五点');
+  assert(evalLeaf(b, BLACK, BLACK, 2) === WIN_V / 4 - 2, '轮走方单活三优先于对方双活三（3 ply 快过 4+ ply）');
+  assert(evalLeaf(b, WHITE, BLACK, 2) === -(WIN_V / 4 - 2), '单活三准胜符号：ai=白、黑走子应为负');
+  b = makeBoard();
+  b[idx(3,7)] = b[idx(4,7)] = b[idx(6,7)] = BLACK;      // 黑单跳三 _XX_X_，白空盘
+  assert(evalLeaf(b, BLACK, WHITE, 3) === evalBoard(b, BLACK), '单活三在对方走子时不触发准胜（需轮到己走）');
   b = makeBoard();
   b[idx(3,7)] = b[idx(5,7)] = b[idx(6,7)] = BLACK;      // _X_XX_
   assert(openThreeCount(b, BLACK, 8) === 1, '跳三 _X_XX_ 应计为活三');
@@ -2964,12 +2992,13 @@ function selfTest() {
   assert(openThreeCount(b, BLACK, 8) === 0, 'O.XXX.O 两端之外被堵死，不能成活四，不计为活三');
 
   /* ---- ⑦ PVS 窄窗搜索不改变根着法（固定深度 + 超大预算，确定性对拍黄金值）---- */
+  /* ㉑：叶评估改动后重标定 #5（d5 G6→L8；d6 起两版同为 H5，且 L8/G6 均无被反杀之虞） */
   const goldens = [
     { seq: [[7,7],[8,8],[7,8]], d: 5, mv: 'H10' },
     { seq: [[7,7],[8,8],[7,8]], d: 6, mv: 'G10' },
     { seq: [[7,7],[8,7],[7,8],[6,7],[9,6],[8,8],[10,7],[6,8],[7,9],[9,8],[5,7],[11,8]], d: 5, mv: 'H7' },
     { seq: [[7,7],[8,7],[7,8],[6,7],[9,6],[8,8],[10,7],[6,8],[7,9],[9,8],[5,7],[11,8]], d: 6, mv: 'H7' },
-    { seq: [[3,3],[5,5],[7,7],[9,6],[11,9],[6,10],[12,13],[4,10],[6,4],[8,5],[9,8],[11,7]], d: 5, mv: 'G6' },
+    { seq: [[3,3],[5,5],[7,7],[9,6],[11,9],[6,10],[12,13],[4,10],[6,4],[8,5],[9,8],[11,7]], d: 5, mv: 'L8' },
     { seq: [[3,3],[5,5],[7,7],[9,6],[11,9],[6,10],[12,13],[4,10],[6,4],[8,5],[9,8],[11,7]], d: 6, mv: 'H5' },
     { seq: [[7,7],[7,8],[8,7],[8,8],[6,7],[9,7],[7,6],[7,9],[5,5],[10,10],[6,6],[9,9]], d: 5, mv: 'L7' },
     { seq: [[7,7],[7,8],[8,7],[8,8],[6,7],[9,7],[7,6],[7,9],[5,5],[10,10],[6,6],[9,9]], d: 6, mv: 'L7' },
