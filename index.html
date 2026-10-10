@@ -711,6 +711,9 @@ const AI_NARROW_RETRY = false;
    AI_KILLER      杀手着法置顶
    AI_TT_DEPTH    置换表按深度优先替换 */
 const AI_LINE_CAND = true, AI_KILLER = true, AI_TT_DEPTH = true;
+/* ⑳ VCT（连续威胁搜索，见 vctRoot 处说明）。VCF 的超集：允许攻方造活三，
+      因此「三 → 活四 → 五」这类最常见的中盘强制胜也能直接证明，而不是靠深度撞见。 */
+const AI_VCT = true;
 
 /* ---------- 层级权重（启发式评分） ---------- */
 const T = { NONE: 0, ONE: 1, TWO: 2, OTWO: 3, THREE: 4, BROKEN: 5, OTHREE: 6, FOUR: 7, OFOUR: 8, FIVE: 9 };
@@ -1394,6 +1397,244 @@ function vcfRoot(b, atk, maxLen, t0, budget, preScored) {
   }
   return best;
 }
+/* ============================================================
+   ⑳ VCT：连续威胁搜索（VCF 的超集）
+   ------------------------------------------------------------
+   VCF 只允许攻方走「冲四」，于是所有以活三起手的强制胜（三 → 活四 → 五，
+   以及更长的威胁链）都只能靠 α-β 的深度硬扛。VCT 把攻方的合法手放宽为
+   「造四」或「造活三」，防方的应手就是这些威胁的防守点。
+
+   ★ 正确性（作者定的原则：误报必胜比漏杀严重得多，所以只做保守方向）
+   我们的判胜形式是「对防方集合 D 里的每一手，攻方都能继续赢」。
+   因此 D 必须是「防方所有不输的着法」的**超集**——漏掉一个能解的应手就会假杀。
+
+   设攻方走完 m 之后盘面上的威胁为 T。防方走 d 之后：
+     · d 没解掉任何 T，且防方自己也没成五 ⇒ 攻方执行 T
+       造四 → 直接连五；造活三 → 活四（两个互异连五点）→ 防方只能挡一个 → 胜。
+     · 唯一的例外是「反四」：活三的兑现要 3 手（ply 1/3/5），而防方在 ply 2
+       冲一个四、ply 4 就能连五，比攻方快一手。所以**防方的冲四是有效抵抗**，
+       必须进 D。（防方的活三则慢一手，不构成解，不必进 D。）
+     · 攻方自己若已有连五点，则攻方 ply 3 就成五，快过防方 ply 2 起手的任何
+       反四 —— 这时 D 里不需要枚举防方的冲四。
+
+   于是 D（超集）=
+       攻方全部连五点                      （不挡就输）
+     ∪ 攻方每个活三的防守点                （见下，取超集）
+     ∪ 防方一手成五的点                    （防方反杀）
+     ∪ 防方造四的点（仅当攻方尚无连五点时）
+
+   活三的防守点取超集，保证不漏解：
+     · 连活三 XXX 占 line[st..st+2]，两端 st-1 / st+3 为空：
+         兑现点 = {st-1, st+3}；能把它降格成单四的还有 {st-2, st+4}
+         （占住 st-2 后，攻方补 st-1 得到的四有一端被堵，不再是活四）。
+         故取 {st-2, st-1, st+3, st+4} ∩ 界内 ∩ 空格 —— 真正的解一定在里面。
+     · 跳活三 E XX E X E / E X E XX E（6 格窗 st..st+5，两端空，内部一个空档）：
+         兑现点只有一个 = 空档；占住两端任一个则补档后不成活四；
+         窗外的格子不影响。故取 {空档, st, st+5} ∩ 空格。
+
+   保守性：只对「D 里每一手都赢」才宣布必胜；节点上限 VCT_CAP + 时间闸门，
+   超限立即放弃，上层照旧走 α-β，不会因此下错手。
+   ============================================================ */
+const VCT_MAXLEN = { hard: 3, expert: 3 };     // 攻方最多连续走几手威胁（三→活四→五 = 3 手）
+const VCT_CAP = 6000;                          // 每次决策的 VCT 节点上限
+const VCT_CAND_CAP = 14;                       // 每层最多考虑几个攻方候选（超出即截断，只损失完备性）
+const VCT_DEF_CAP = 14;                        // 防守点超过这个数就认为该手不够逼迫，跳过
+let vctNodes = 0, vctT0 = 0, vctDeadline = 1e9;
+/* 独立 stamp：不要和 fiveThreatCount / evalLeaf 共用的 thrMark 互相踩踏 */
+const vctMark = new Int32Array(N * N);
+let vctStamp = 0;
+const VCT_FIVE = new Int32Array(8);
+const VCT_DEF = new Int32Array(64);
+const VCT_DEF_STACK = new Int32Array(8 * 64);   // 每层一份防守点副本：递归会覆盖 VCT_DEF
+const OT_L = new Int32Array(64), OT_S = new Int32Array(64), OT_K = new Int32Array(64);
+
+/* 收集 side 的全部「下一手即连五」的点，返回个数（至多 cap 个） */
+function vctFives(b, side, out, cap) {
+  vctStamp++;
+  const st = vctStamp;
+  let n = 0;
+  for (let li = 0; li < LINES.length; li++) {
+    const line = LINES[li], len = line.length;
+    let cs = 0, ce = 0;
+    for (let k = 0; k < 5; k++) { const v = b[line[k]]; if (v === side) cs++; else if (v === EMPTY) ce++; }
+    for (let s2 = 0; ; s2++) {
+      if (cs === 4 && ce === 1) {
+        for (let k = 0; k < 5; k++) {
+          const c = line[s2 + k];
+          if (b[c] === EMPTY) {
+            if (vctMark[c] !== st) { vctMark[c] = st; out[n++] = c; }
+            break;
+          }
+        }
+        if (n >= cap) return n;                // 已够用：cap>=2 时必为必胜，cap==1 时也是"有"
+      }
+      if (s2 + 5 >= len) break;
+      const vo = b[line[s2]], vn = b[line[s2 + 5]];
+      if (vo === side) cs--; else if (vo === EMPTY) ce--;
+      if (vn === side) cs++; else if (vn === EMPTY) ce++;
+    }
+  }
+  return n;
+}
+/* 收集 side 的全部活三（与 openThreeOnLine 判据一致），返回个数 */
+function vctOpenThrees(b, side) {
+  let n = 0;
+  for (let li = 0; li < LINES.length; li++) {
+    const line = LINES[li], len = line.length;
+    for (let st = 0; st + 2 < len; st++) {
+      if (b[line[st]] !== side) {
+        if (st + 5 < len && b[line[st]] === EMPTY && b[line[st + 5]] === EMPTY) {
+          const a = b[line[st + 1]], c2 = b[line[st + 2]], c3 = b[line[st + 3]], c4 = b[line[st + 4]];
+          if (a === side && c4 === side && ((c2 === side && c3 === EMPTY) || (c2 === EMPTY && c3 === side))) {
+            OT_L[n] = li; OT_S[n] = st; OT_K[n] = (c2 === side) ? 1 : 2;
+            if (++n >= 60) return n;
+          }
+        }
+        continue;
+      }
+      if (b[line[st + 1]] !== side || b[line[st + 2]] !== side) continue;
+      if (st > 0 && b[line[st - 1]] === side) continue;
+      if (st + 3 < len && b[line[st + 3]] === side) continue;
+      if (!(st > 0 && b[line[st - 1]] === EMPTY) || !(st + 3 < len && b[line[st + 3]] === EMPTY)) continue;
+      if (AI_OPENTHREE_STRICT &&
+        !(st > 1 && b[line[st - 2]] === EMPTY) &&
+        !(st + 4 < len && b[line[st + 4]] === EMPTY)) continue;
+      OT_L[n] = li; OT_S[n] = st; OT_K[n] = 0;
+      if (++n >= 60) return n;
+    }
+  }
+  return n;
+}
+function vctDedup(a, n) {
+  let m = 0;
+  for (let i = 0; i < n; i++) {
+    const v = a[i];
+    let seen = 0;
+    for (let j = 0; j < m; j++) if (a[j] === v) { seen = 1; break; }
+    if (!seen) a[m++] = v;
+  }
+  return m;
+}
+/* 攻方刚走完 m（盘上含其新子），轮防方：算出防方必须考虑的应手集合 */
+function vctDefences(b, atk, out) {
+  const def = other(atk);
+  let n = 0;
+  /* 1) 攻方的连五点：不挡就是输 */
+  const nf = vctFives(b, atk, VCT_FIVE, 8);
+  for (let i = 0; i < nf; i++) out[n++] = VCT_FIVE[i];
+  /* 2) 攻方活三的防守点（超集） */
+  const nt = vctOpenThrees(b, atk);
+  for (let k = 0; k < nt; k++) {
+    const line = LINES[OT_L[k]], st = OT_S[k], kind = OT_K[k];
+    if (kind === 0) {
+      /* 三占 st..st+2；防守点 = {st-2, st-1, st+3, st+4} */
+      for (let o = -2; o <= 4; o++) {
+        if (o >= 0 && o <= 2) continue;
+        const p = st + o;
+        if (p < 0 || p >= line.length) continue;
+        const c = line[p];
+        if (b[c] === EMPTY && n < out.length) out[n++] = c;
+      }
+    } else {
+      const gap = kind === 1 ? st + 3 : st + 2;
+      for (let q = 0; q < 3; q++) {
+        const p = q === 0 ? gap : (q === 1 ? st : st + 5);
+        if (p < 0 || p >= line.length) continue;
+        const c = line[p];
+        if (b[c] === EMPTY && n < out.length) out[n++] = c;
+      }
+    }
+  }
+  /* 3) 防方一手成五的点（反杀） */
+  const nd = vctFives(b, def, VCT_FIVE, 4);
+  for (let i = 0; i < nd; i++) out[n++] = VCT_FIVE[i];
+  /* 4) 防方反冲四：只有攻方尚无连五点时才可能抢先（见文首推导） */
+  if (nf === 0) {
+    const cl = candidateList(b, 2);
+    for (let q = 0; q < cl.length; q++) {
+      const i = cl[q];
+      pointTierEx(b, i % N, (i / N) | 0, def);
+      if (P_RES.t >= T.FOUR && n < out.length) out[n++] = i;
+    }
+  }
+  return vctDedup(out, n);
+}
+/* 攻方候选：造四或造活三，按威胁强度降序 */
+function vctCands(b, atk) {
+  const cl = candidateList(b, 2);
+  const out = [];
+  for (let q = 0; q < cl.length; q++) {
+    const i = cl[q];
+    pointTierEx(b, i % N, (i / N) | 0, atk);
+    const t = P_RES.t;
+    if (t === T.FIVE) return [{ i, k: 1e9 }];
+    const hi = P_RES.hi;
+    if (t >= T.FOUR || hi >= 1) {
+      out.push({ i, k: (t >= T.OFOUR ? 40 : 0) + (t >= T.FOUR ? 20 : 0) + hi * 4 });
+    }
+  }
+  out.sort((a, c) => c.k - a.k || a.i - c.i);
+  if (out.length > VCT_CAND_CAP) out.length = VCT_CAND_CAP;
+  return out;
+}
+/* 攻方试走 m，返回所需攻方手数（0 = 不成立） */
+function vctTry(b, atk, m, l, depth) {
+  const def = other(atk);
+  b[m] = atk;
+  let r = 0;
+  if (makesFive(b, m % N, (m / N) | 0)) r = 1;
+  else {
+    const base = (depth < 8 ? depth : 7) * 64;
+    const nd = vctDefences(b, atk, VCT_DEF);
+    for (let z = 0; z < nd; z++) VCT_DEF_STACK[base + z] = VCT_DEF[z];
+    if (nd > 0 && nd <= VCT_DEF_CAP) {
+      let worst = 0;
+      for (let i = 0; i < nd; i++) {
+        const d = VCT_DEF_STACK[base + i];
+        b[d] = def;
+        let sub = 0;
+        if (!makesFive(b, d % N, (d / N) | 0)) sub = vctStep(b, atk, l - 1, depth + 1);
+        b[d] = EMPTY;
+        if (sub === 0) { worst = 0; break; }
+        if (sub > worst) worst = sub;
+      }
+      r = worst ? 1 + worst : 0;
+    }
+  }
+  b[m] = EMPTY;
+  return r;
+}
+function vctStep(b, atk, l, depth) {
+  if (l <= 0 || --vctNodes < 0) return 0;
+  if ((vctNodes & 31) === 0 && now() - vctT0 > vctDeadline) { vctNodes = 0; return 0; }
+  if (vctFives(b, atk, VCT_FIVE, 1) > 0) return 1;   // 一手成五
+  const cands = vctCands(b, atk);
+  for (let q = 0; q < cands.length; q++) {
+    const r = vctTry(b, atk, cands[q].i, l, depth);
+    if (r) return r;
+    if (vctNodes <= 0) return 0;
+  }
+  return 0;
+}
+/* 根：按「攻方手数」迭代加深，返回最短的一条杀（最短 = 最可靠） */
+function vctRoot(b, atk, maxLen, t0, budget) {
+  if (maxLen <= 1) return null;
+  if (fiveThreatCount(b, other(atk), 1) > 0) return null;   // 防方已有连五点：先解杀要紧
+  /* budget 是"还剩下多少"而不是"从 t0 起多少"：VCF 已经吃掉的那一段要加回来，
+     否则 VCF 用掉一半以上时 VCT 会在第一个检查点就直接放弃。 */
+  vctNodes = VCT_CAP; vctT0 = t0; vctDeadline = budget + (now() - t0);
+  let best = null, bestLen = 1e9;
+  for (let L = 2; L <= maxLen; L++) {
+    const cands = vctCands(b, atk);
+    for (let q = 0; q < cands.length; q++) {
+      const r = vctTry(b, atk, cands[q].i, L, 0);
+      if (r && r < bestLen) { bestLen = r; best = { i: cands[q].i, len: r }; if (r <= 2) return best; }
+      if (vctNodes <= 0 || now() - t0 > vctDeadline) return best;
+    }
+    if (best) return best;                           // 已有更短的杀，不必再加深
+  }
+  return best;
+}
 
 /* ---------- Alpha-Beta 搜索 ---------- */
 const K_BY_DEPTH = d => (d >= 3 ? 6 : 4);
@@ -1748,8 +1989,17 @@ function chooseAiMove(b, diff, aiP) {
   if (AI_VCF) {
     /* VCF 只许占用预算的一小部分，且必须从后续 α-β 的预算里扣掉，
        否则一步棋的总时间会超过对外承诺的 550/900ms。复用已排好序的 scored。 */
-    const vp = vcfRoot(b, aiP, VCF_MAXLEN[diff] || 0, tv0, budget * 0.35, scored);
-    if (vp) return { x: vp.i % N, y: (vp.i / N) | 0, i: vp.i, m: T.FIVE, o: 0, s: WIN_V, vcf: vp.len };
+    let vp = vcfRoot(b, aiP, VCF_MAXLEN[diff] || 0, tv0, budget * 0.35, scored);
+    /* VCF 找不到再上 VCT。预算共用 0.35×budget 这一份（VCF 用剩的才给 VCT），
+       所以两步加起来不会超过原承诺时间；VCT 自身还有节点上限 + 时间闸门兜底。 */
+    if (!vp && AI_VCT) {
+      const left = budget * 0.35 - (now() - tv0);
+      if (left > 20) {
+        const vt = vctRoot(b, aiP, VCT_MAXLEN[diff] || 0, tv0, left);
+        if (vt) vp = { i: vt.i, len: vt.len, vct: 1 };
+      }
+    }
+    if (vp) return { x: vp.i % N, y: (vp.i / N) | 0, i: vp.i, m: T.FIVE, o: 0, s: WIN_V, vct: !!vp.vct, vcf: vp.len };
   }
   HIST.fill(0);                                   // ⑧ 每手棋重新累积历史
   const root12 = scored.slice(0, 12);
