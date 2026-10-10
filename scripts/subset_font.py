@@ -12,6 +12,7 @@ Nebulove 字体子集化 & 内嵌
 """
 import argparse, base64, io, os, re, sys, urllib.request
 FONT_URL = "https://raw.githubusercontent.com/lingyicute/Nebulove/main/Nebulove.woff2"
+# 不再写入远程地址
 HERE = os.path.dirname(os.path.abspath(__file__))
 DEFAULT_HTML = os.path.join(os.path.dirname(HERE), "index.html")
 ASCII = {chr(c) for c in range(32, 127)}
@@ -23,14 +24,27 @@ FONT_FACE_RE = re.compile(r'(?:' + GEN_COMMENT_RE + r')?@font-face\s*\{[^}]*\}',
 
 
 def strip_non_render_text(html):
-    """剔除不会渲染的文字：HTML 注释、<style>、<script> 里的注释。"""
+    """剔除所有用户不可见的字符：
+    1. HTML 注释 <!-- ... -->
+    2. <style> 样式标签全部内容
+    3. <script> 中仅供 Node 测试的 selfTest() 及其后全量代码
+    4. <script> 中的块注释 /* ... */
+    5. <script> 中的行注释 // ...（包含单独成行及代码尾部行注释）
+    """
     html = re.sub(r'<!--.*?-->', '', html, flags=re.S)
     html = re.sub(r'<style\b[^>]*>.*?</style>', '', html, flags=re.S | re.I)
 
     def _js(m):
-        s = re.sub(r'/\*.*?\*/', ' ', m.group(1), flags=re.S)      # 块注释
-        s = re.sub(r'(?m)^[ \t]*//.*$', ' ', s)                    # 行注释
-        return s
+        code = m.group(1)
+        # 截断仅在命令行自检时运行的代码（自检断言中的汉字对浏览器用户完全不可见）
+        idx_test = code.find('function selfTest()')
+        if idx_test != -1:
+            code = code[:idx_test]
+        # 剔除块注释 /* ... */
+        code = re.sub(r'/\*.*?\*/', ' ', code, flags=re.S)
+        # 剔除行尾及整行注释 // ...
+        code = re.sub(r'//.*$', ' ', code, flags=re.M)
+        return code
 
     return re.sub(r'<script\b[^>]*>(.*?)</script>', _js, html, flags=re.S | re.I)
 
