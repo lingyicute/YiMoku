@@ -2268,6 +2268,10 @@ function buildBoard() {
     c.dataset.x = x; c.dataset.y = y;
     c.setAttribute('aria-label', coord(x, y));
     c.innerHTML = '<i class="s"></i>';
+    c.addEventListener('focus', () => {
+      S.cursor.x = x; S.cursor.y = y; S.cursorVisible = true;
+      syncBoardState();
+    });
     frag.appendChild(c);
     cellsEl[idx(x, y)] = c;
   }
@@ -2305,7 +2309,12 @@ function syncBoardState() {
   const curIdx = S.cursorVisible && !S.over && !S.aiThinking && isHuman(t) ? idx(S.cursor.x, S.cursor.y) : -1;
   if (S.prevCursor !== curIdx) {
     if (S.prevCursor >= 0 && cellsEl[S.prevCursor]) cellsEl[S.prevCursor].classList.remove('cursor');
-    if (curIdx >= 0 && cellsEl[curIdx]) cellsEl[curIdx].classList.add('cursor');
+    if (curIdx >= 0 && cellsEl[curIdx]) {
+      cellsEl[curIdx].classList.add('cursor');
+      if (document.activeElement && document.activeElement.classList.contains('cell') && document.activeElement !== cellsEl[curIdx]) {
+        cellsEl[curIdx].focus();
+      }
+    }
     S.prevCursor = curIdx;
   }
 }
@@ -2719,6 +2728,7 @@ function init() {
   $('clearCancel').addEventListener('click', () => closeModal('modalClear'));
   $('clearConfirm').addEventListener('click', () => {
     S.records = freshRecords();
+    S.lastRecordSnapshot = null;
     store.setJSON('records', S.records);
     renderRecords();
     closeModal('modalClear');
