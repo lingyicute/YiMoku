@@ -127,6 +127,7 @@ The shipped artifact stays exactly as it is — one zero-dependency HTML file. E
 ```
 npm install          # dev dependencies (jsdom only)
 npm test             # built-in self-test + DOM smoke test  (~10 s)
+npm run test:fuzz    # equivalence fuzzing & TT consistency (~10 s)
 npm run test:bench   # AI strength & latency benchmark      (~1–2 min)
 ```
 
