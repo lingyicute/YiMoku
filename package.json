@@ -13,6 +13,7 @@
     "test": "node tests/selftest.js && node tests/smoke.js",
     "test:selftest": "node tests/selftest.js",
     "test:smoke": "node tests/smoke.js",
+    "test:fuzz": "node tests/fuzz.js",
     "test:bench": "node tests/bench.js"
   },
   "devDependencies": {
