@@ -27,7 +27,7 @@ if (baseSrc.length < 1000) { console.error('FAIL: 未找到入口标记'); proce
 const API = `return {
   makeBoard, idx, N, BLACK, WHITE, EMPTY, T, WIN_V, EXT_LIMIT, now,
   fiveThreatCount, evalBoard, evalLeaf, openThreeCount,
-  pointTierEx, candidateList, scoreCell, abSearch
+  pointTierEx, candidateList, scoreCell, abSearch, searchBest
 };`;
 
 function loadEngine(disable) {
@@ -43,6 +43,7 @@ function loadEngine(disable) {
 const FULL = loadEngine([]);                                   // 全部开关开启（出货形态）
 const NO_LEAF = loadEngine(['AI_FAST_LEAF', 'AI_LINE_CAND']);                  // 关滑动窗口/stamp
 const NO_TT = loadEngine(['AI_TT']);                           // 关置换表
+const NO_INC = loadEngine(['AI_INC_EVAL']);                    // 关增量方向评估
 
 let seed = 20261009;
 function rnd() { seed ^= seed << 13; seed >>>= 0; seed ^= seed >>> 17; seed ^= seed << 5; seed >>>= 0; return seed / 4294967296; }
@@ -167,7 +168,7 @@ for (let t = 0; t < 16; t++) {
   }
 }
 
-/* ---- 2c. AI_TT：热表幂等 + 值域 ---- */
+/* ---- 2c. AI_TT：热表幂等 + 值域 + AI_INC_EVAL 逐位等价 ---- */
 for (let t = 0; t < 10; t++) {
   const b = randomBoard(1);
   const ai = t % 2 === 0 ? FULL.BLACK : FULL.WHITE;
@@ -176,6 +177,17 @@ for (let t = 0; t < 10; t++) {
   const h2 = FULL.abSearch(b, ai, ai, D, -FULL.WIN_V, FULL.WIN_V, 0, FULL.now(), 30000, FULL.EXT_LIMIT);
   if (h1 === null) continue;
   ck(h1 === h2 && Number.isFinite(h1) && Math.abs(h1) <= FULL.WIN_V, 'TT 热表幂等/值域: ' + h1 + '/' + h2);
+  const gcl = FULL.candidateList(b);
+  const gsc1 = [], gsc2 = [];
+  for (const gi of gcl) {
+    const c = FULL.scoreCell(b, gi % 15, (gi / 15) | 0, ai);
+    gsc1.push(c); gsc2.push(Object.assign({}, c));
+  }
+  gsc1.sort((a, c) => c.s - a.s); gsc2.sort((a, c) => c.s - a.s);
+  const mInc = loadEngine([]); const mNoInc = loadEngine(['AI_INC_EVAL']);
+  const rInc = mInc.searchBest(b.slice(), ai, gsc1.slice(0, 12), D, 30000);
+  const rNoInc = mNoInc.searchBest(b.slice(), ai, gsc2.slice(0, 12), D, 30000);
+  ck(rInc && rNoInc && rInc.i === rNoInc.i, 'AI_INC_EVAL searchBest 等价 D=' + D + ': ' + (rInc && rInc.i) + ' vs ' + (rNoInc && rNoInc.i));
   ttChecks++;
 }
 
