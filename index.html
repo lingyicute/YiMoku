@@ -699,7 +699,7 @@ const now = () => (typeof performance !== 'undefined' ? performance.now() : Date
                       candidateList 改用 stamp 复用（消掉每节点一次的 225B 分配）。
                       语义与旧实现逐位一致（对拍脚本验证）。 */
 const AI_VCF = true, AI_TIME_AWARE = true, AI_FAST_TOPK = true;
-const AI_TT = true, AI_FAST_LEAF = true;
+const AI_TT = true, AI_FAST_LEAF = true, AI_INC_EVAL = true;
 /* ⑪ 活三准胜判据收紧为「能补成活四」（见 openThreeCount 处说明）。纯判据修正。
    AI_VCF_GUARD   ⑩ 送杀检查：落子前确认没有把对手可证明的连冲四杀放上棋盘。 */
 const AI_OPENTHREE_STRICT = true, AI_VCF_GUARD = true;
@@ -861,7 +861,13 @@ function pointTierEx(b, x, y, p) {
     else if (run === 2) t = open === 2 ? T.OTWO : (open === 1 ? T.TWO : T.NONE);
     else if (run === 1) t = open === 2 ? T.TWO : (open === 1 ? T.ONE : T.NONE);
     if (gapLen >= 4 && open >= 1 && t < T.BROKEN) t = T.BROKEN;
-    if (gapLen >= 3 && open >= 2 && t < T.OTHREE && run < 3) t = Math.max(t, T.BROKEN);
+    /* ㉒ 跳三（gapLen>=3, run<3）必须至少一侧外端（o1/o2）为空才能形成跳活三（T.BROKEN）；
+       若跨空连子外端已被堵死（如 _X_XXO），则仅有一处成四点，实为跳眠三（T.THREE），
+       旧逻辑因 e1 指向内部跳空而使 open===2 恒成立，误将死端跳眠三升格为 7e5 的 T.BROKEN。 */
+    if (gapLen >= 3 && open >= 2 && t < T.OTHREE && run < 3) {
+      const jOpen = (g1 > 0 && o1) || (g2 > 0 && o2);
+      t = Math.max(t, jOpen ? T.BROKEN : T.THREE);
+    }
     let dirThr = 0;
     if (e1 >= 0 && run + g1 >= 4) {
       dirThr = 1;
@@ -1528,15 +1534,14 @@ function vctDedup(a, n) {
   }
   return m;
 }
-/* 攻方刚走完 m（盘上含其新子），轮防方：算出防方必须考虑的应手集合 */
+/* 攻方刚走完 m（盘上含其新子，且已知双方此前均无连五点、m 亦未直接造四），轮防方：算出防方必须考虑的应手集合 */
 function vctDefences(b, atk, out) {
   const def = other(atk);
   let n = 0;
-  /* 1) 攻方的连五点：不挡就是输 */
-  const nf = vctFives(b, atk, VCT_FIVE, 8);
-  for (let i = 0; i < nf; i++) out[n++] = VCT_FIVE[i];
+  const nf = 0;
   /* 2) 攻方活三的防守点（超集） */
   const nt = vctOpenThrees(b, atk);
+  if (nt === 0) return 0;
   for (let k = 0; k < nt; k++) {
     const line = LINES[OT_L[k]], st = OT_S[k], kind = OT_K[k];
     if (kind === 0) {
@@ -1558,9 +1563,6 @@ function vctDefences(b, atk, out) {
       }
     }
   }
-  /* 3) 防方一手成五的点（反杀） */
-  const nd = vctFives(b, def, VCT_FIVE, 4);
-  for (let i = 0; i < nd; i++) out[n++] = VCT_FIVE[i];
   /* 4) 防方反冲四：只有攻方尚无连五点时才可能抢先（见文首推导） */
   if (nf === 0) {
     const cl = candidateList(b, 2);
@@ -1572,17 +1574,18 @@ function vctDefences(b, atk, out) {
   }
   return vctDedup(out, n);
 }
-/* 攻方候选：造四或造活三，按威胁强度降序 */
-function vctCands(b, atk) {
+/* 攻方候选：造四或造活三，按威胁强度降序（剩余步数 l<=2 时活三来不及兑现，仅保留造四手） */
+function vctCands(b, atk, l) {
   const cl = candidateList(b, 2);
   const out = [];
+  const needFour = (l !== undefined && l <= 2);
   for (let q = 0; q < cl.length; q++) {
     const i = cl[q];
     pointTierEx(b, i % N, (i / N) | 0, atk);
     const t = P_RES.t;
     if (t === T.FIVE) return [{ i, k: 1e9 }];
     const hi = P_RES.hi;
-    if (t >= T.FOUR || hi >= 1) {
+    if (needFour ? (t >= T.FOUR) : (t >= T.FOUR || hi >= 1)) {
       out.push({ i, k: (t >= T.OFOUR ? 40 : 0) + (t >= T.FOUR ? 20 : 0) + hi * 4 });
     }
   }
@@ -1590,38 +1593,66 @@ function vctCands(b, atk) {
   if (out.length > VCT_CAND_CAP) out.length = VCT_CAND_CAP;
   return out;
 }
+/* ㉓ 防方反冲四（废四）强制应手：若攻方挡完对方单冲四后仍保有活三，该交换不消耗攻方威胁步数 l */
+function vctStepForced(b, atk, blk, l, depth) {
+  if (depth >= 7 || --vctNodes < 0) return 0;
+  b[blk] = atk;
+  const hasO3 = vctOpenThrees(b, atk) > 0;
+  b[blk] = EMPTY;
+  const nl = hasO3 ? l + 1 : l;
+  return nl >= 1 ? vctTry(b, atk, blk, nl, depth) : 0;
+}
 /* 攻方试走 m，返回所需攻方手数（0 = 不成立） */
 function vctTry(b, atk, m, l, depth) {
   const def = other(atk);
+  pointTierEx(b, m % N, (m / N) | 0, atk);
+  if (P_RES.t === T.FIVE) return 1;
+  const af = THR_N;
+  if (af >= 2) return l >= 2 ? 2 : 0;
+  if (af === 1) {
+    if (l <= 1) return 0;
+    const blk = THR_BUF[0];
+    b[m] = atk;
+    pointTierEx(b, blk % N, (blk / N) | 0, def);
+    let r = 0;
+    if (P_RES.t !== T.FIVE && THR_N < 2) {
+      const df = THR_N, dBlk = THR_BUF[0];
+      b[blk] = def;
+      const sub = df === 1 ? vctStepForced(b, atk, dBlk, l - 1, depth + 1) : vctStep(b, atk, l - 1, depth + 1);
+      if (sub > 0) r = 1 + sub;
+      b[blk] = EMPTY;
+    }
+    b[m] = EMPTY;
+    return r;
+  }
+  if (l <= 2) return 0;
   b[m] = atk;
   let r = 0;
-  if (makesFive(b, m % N, (m / N) | 0)) r = 1;
-  else {
-    const base = (depth < 8 ? depth : 7) * 64;
-    const nd = vctDefences(b, atk, VCT_DEF);
+  const base = (depth < 8 ? depth : 7) * 64;
+  const nd = vctDefences(b, atk, VCT_DEF);
+  if (nd > 0 && nd <= VCT_DEF_CAP) {
     for (let z = 0; z < nd; z++) VCT_DEF_STACK[base + z] = VCT_DEF[z];
-    if (nd > 0 && nd <= VCT_DEF_CAP) {
-      let worst = 0;
-      for (let i = 0; i < nd; i++) {
-        const d = VCT_DEF_STACK[base + i];
-        b[d] = def;
-        let sub = 0;
-        if (!makesFive(b, d % N, (d / N) | 0)) sub = vctStep(b, atk, l - 1, depth + 1);
-        b[d] = EMPTY;
-        if (sub === 0) { worst = 0; break; }
-        if (sub > worst) worst = sub;
-      }
-      r = worst ? 1 + worst : 0;
+    let worst = 0;
+    for (let i = 0; i < nd; i++) {
+      const d = VCT_DEF_STACK[base + i];
+      pointTierEx(b, d % N, (d / N) | 0, def);
+      if (P_RES.t === T.FIVE || THR_N >= 2) { worst = 0; break; }
+      const df = THR_N, dBlk = THR_BUF[0];
+      b[d] = def;
+      const sub = df === 1 ? vctStepForced(b, atk, dBlk, l - 1, depth + 1) : vctStep(b, atk, l - 1, depth + 1);
+      b[d] = EMPTY;
+      if (sub === 0) { worst = 0; break; }
+      if (sub > worst) worst = sub;
     }
+    r = worst ? 1 + worst : 0;
   }
   b[m] = EMPTY;
   return r;
 }
 function vctStep(b, atk, l, depth) {
-  if (l <= 0 || --vctNodes < 0) return 0;
+  if (l <= 1 || --vctNodes < 0) return 0;
   if ((vctNodes & 31) === 0 && now() - vctT0 > vctDeadline) { vctNodes = 0; return 0; }
-  if (vctFives(b, atk, VCT_FIVE, 1) > 0) return 1;   // 一手成五
-  const cands = vctCands(b, atk);
+  const cands = vctCands(b, atk, l);
   for (let q = 0; q < cands.length; q++) {
     const r = vctTry(b, atk, cands[q].i, l, depth);
     if (r) return r;
@@ -1638,7 +1669,7 @@ function vctRoot(b, atk, maxLen, t0, budget) {
   vctNodes = VCT_CAP; vctT0 = t0; vctDeadline = budget + (now() - t0);
   let best = null, bestLen = 1e9;
   for (let L = 2; L <= maxLen; L++) {
-    const cands = vctCands(b, atk);
+    const cands = vctCands(b, atk, L);
     for (let q = 0; q < cands.length; q++) {
       const r = vctTry(b, atk, cands[q].i, L, 0);
       if (r && r < bestLen) { bestLen = r; best = { i: cands[q].i, len: r }; if (r <= 2) return best; }
@@ -1720,6 +1751,243 @@ function topKScored(b, side, k, radius) {
 const K_MAX = 8;
 const KS = new Float64Array(K_MAX), KI = new Int32Array(K_MAX),
       KM = new Int32Array(K_MAX), KO = new Int32Array(K_MAX), KH = new Int32Array(K_MAX);
+/* ㉔ 增量方向评估表与预计算邻域表：
+   pointTierEx 的 8 条射线以被评空点 (x,y) 为严格中心向外发散，两两几何不相交，
+   因此全盘每个空点的 4 个方向均可独立压缩为 1 字节状态（t | thr<<4 | hi<<6 | mid<<7）。
+   在 Alpha-Beta 搜索树中，每次落子/撤销只改变穿过该子的 4 条直线上距离 <=4 的空点的
+   单个方向状态（平均每步仅 ~14 个方向槽位），其余候选格直接查表读取，与全量重算逐位一致。 */
+const NB1_IDX = new Int32Array(N * N * 8), NB1_LEN = new Uint8Array(N * N);
+const NB2_LINE_IDX = new Int32Array(N * N * 16), NB2_LINE_LEN = new Uint8Array(N * N);
+const CAND_BUF = new Int32Array(N * N);
+const CENTER_W = new Float64Array(N * N);
+(function initFastTables() {
+  for (let y = 0; y < N; y++) {
+    for (let x = 0; x < N; x++) {
+      const i = y * N + x;
+      CENTER_W[i] = (29 - (Math.abs(x - 7) + Math.abs(y - 7))) * 1.5;
+      let c1 = 0, c2 = 0;
+      for (let dy = -1; dy <= 1; dy++) {
+        const ny = y + dy;
+        if (ny < 0 || ny >= N) continue;
+        for (let dx = -1; dx <= 1; dx++) {
+          const nx = x + dx;
+          if (nx < 0 || nx >= N || (dx === 0 && dy === 0)) continue;
+          const ni = ny * N + nx;
+          NB1_IDX[i * 8 + c1++] = ni;
+          NB2_LINE_IDX[i * 16 + c2++] = ni;
+        }
+      }
+      for (let d2 = 0; d2 < 4; d2++) {
+        const dx = DX4[d2], dy = DY4[d2];
+        for (let s = -2; s <= 2; s += 4) {
+          const nx = x + dx * s, ny = y + dy * s;
+          if (nx >= 0 && nx < N && ny >= 0 && ny < N) {
+            NB2_LINE_IDX[i * 16 + c2++] = ny * N + nx;
+          }
+        }
+      }
+      NB1_LEN[i] = c1;
+      NB2_LINE_LEN[i] = c2;
+    }
+  }
+})();
+const DIR_BW = new Uint16Array(N * N * 4);
+const C_META = new Uint16Array(N * N);
+const C_SB = new Float64Array(N * N), C_SW = new Float64Array(N * N);
+const U_NI = new Int32Array(4096), U_IDX4 = new Int32Array(4096),
+      U_DBW = new Uint16Array(4096), U_META = new Uint16Array(4096),
+      U_SB = new Float64Array(4096), U_SW = new Float64Array(4096);
+let uPtr = 0, incActive = false, incDirty = -1;
+function packDirOne(r1, g1, e1, o1, r2, g2, e2, o2) {
+  if ((r1 | g1 | r2 | g2) === 0) return e1 >= 0 ? (e2 >= 0 ? T.TWO : T.ONE) : (e2 >= 0 ? T.ONE : T.NONE);
+  const run = 1 + r1 + r2;
+  if (run >= 5) return T.FIVE | (1 << 6);
+  const open = (e1 >= 0 ? 1 : 0) + (e2 >= 0 ? 1 : 0);
+  const gapLen = r1 + g1 + 1 + r2 + g2;
+  let t = T.NONE;
+  if (run === 4) t = open >= 1 ? T.FOUR : T.NONE;
+  else if (run === 3) t = open === 2 ? T.OTHREE : (open === 1 ? T.THREE : T.NONE);
+  else if (run === 2) t = open === 2 ? T.OTWO : (open === 1 ? T.TWO : T.NONE);
+  else if (run === 1) t = open === 2 ? T.TWO : (open === 1 ? T.ONE : T.NONE);
+  if (gapLen >= 4 && open >= 1 && t < T.BROKEN) t = T.BROKEN;
+  if (gapLen >= 3 && open >= 2 && t < T.OTHREE && run < 3) {
+    const jOpen = (g1 > 0 && o1) || (g2 > 0 && o2);
+    t = Math.max(t, jOpen ? T.BROKEN : T.THREE);
+  }
+  let thr = 0;
+  if (e1 >= 0 && run + g1 >= 4) thr++;
+  if (e2 >= 0 && run + g2 >= 4) thr++;
+  if (thr && t < T.FOUR) t = T.FOUR;
+  const isJumpOpen3 = t === T.BROKEN && ((g1 > 0 && run + g1 === 3 && e2 >= 0 && o1) || (g2 > 0 && run + g2 === 3 && e1 >= 0 && o2));
+  const hi = (t >= T.OTHREE || isJumpOpen3) ? 1 : 0;
+  const mid = (!hi && t >= T.THREE) ? 1 : 0;
+  return t | (thr << 4) | (hi << 6) | (mid << 7);
+}
+function evalDirBoth(b, i, d) {
+  const off = OFF4[d], sbase = i * 4 + d, sp = STEP_P[sbase], sm = STEP_M[sbase];
+  let br1 = 0, bg1 = 0, be1 = -1, bo1 = 0, wr1 = 0, wg1 = 0, we1 = -1, wo1 = 0;
+  if (sp > 0) {
+    let c = i + off; const v0 = b[c];
+    if (v0 === EMPTY) {
+      be1 = we1 = c;
+      if (sp > 1) {
+        c += off; const v1 = b[c];
+        if (v1 === EMPTY) { bo1 = wo1 = 1; }
+        else if (v1 === BLACK) { bg1 = 1; for (let k = 2; k < sp; k++) { c += off; const v = b[c]; if (v === BLACK) bg1++; else { if (v === EMPTY) bo1 = 1; break; } } }
+        else { wg1 = 1; for (let k = 2; k < sp; k++) { c += off; const v = b[c]; if (v === WHITE) wg1++; else { if (v === EMPTY) wo1 = 1; break; } } }
+      }
+    } else if (v0 === BLACK) {
+      br1 = 1; for (let k = 1; k < sp; k++) { c += off; const v = b[c]; if (v === BLACK) { if (be1 < 0) br1++; else bg1++; } else if (v === EMPTY) { if (be1 < 0) be1 = c; else { bo1 = 1; break; } } else break; }
+    } else {
+      wr1 = 1; for (let k = 1; k < sp; k++) { c += off; const v = b[c]; if (v === WHITE) { if (we1 < 0) wr1++; else wg1++; } else if (v === EMPTY) { if (we1 < 0) we1 = c; else { wo1 = 1; break; } } else break; }
+    }
+  }
+  let br2 = 0, bg2 = 0, be2 = -1, bo2 = 0, wr2 = 0, wg2 = 0, we2 = -1, wo2 = 0;
+  if (sm > 0) {
+    let c = i - off; const v0 = b[c];
+    if (v0 === EMPTY) {
+      be2 = we2 = c;
+      if (sm > 1) {
+        c -= off; const v1 = b[c];
+        if (v1 === EMPTY) { bo2 = wo2 = 1; }
+        else if (v1 === BLACK) { bg2 = 1; for (let k = 2; k < sm; k++) { c -= off; const v = b[c]; if (v === BLACK) bg2++; else { if (v === EMPTY) bo2 = 1; break; } } }
+        else { wg2 = 1; for (let k = 2; k < sm; k++) { c -= off; const v = b[c]; if (v === WHITE) wg2++; else { if (v === EMPTY) wo2 = 1; break; } } }
+      }
+    } else if (v0 === BLACK) {
+      br2 = 1; for (let k = 1; k < sm; k++) { c -= off; const v = b[c]; if (v === BLACK) { if (be2 < 0) br2++; else bg2++; } else if (v === EMPTY) { if (be2 < 0) be2 = c; else { bo2 = 1; break; } } else break; }
+    } else {
+      wr2 = 1; for (let k = 1; k < sm; k++) { c -= off; const v = b[c]; if (v === WHITE) { if (we2 < 0) wr2++; else wg2++; } else if (v === EMPTY) { if (we2 < 0) we2 = c; else { wo2 = 1; break; } } else break; }
+    }
+  }
+  return packDirOne(br1, bg1, be1, bo1, br2, bg2, be2, bo2) | (packDirOne(wr1, wg1, we1, wo1, wr2, wg2, we2, wo2) << 8);
+}
+function updateCellSummary(i) {
+  const base = i * 4, w0 = DIR_BW[base], w1 = DIR_BW[base + 1], w2 = DIR_BW[base + 2], w3 = DIR_BW[base + 3];
+  let b0 = w0 & 255, b1 = w1 & 255, b2 = w2 & 255, b3 = w3 & 255;
+  let t0 = b0 & 15, t1 = b1 & 15, t2 = b2 & 15, t3 = b3 & 15, tb, hb, sb;
+  if (t0 === T.FIVE || t1 === T.FIVE || t2 === T.FIVE || t3 === T.FIVE) { tb = T.FIVE; hb = 1; sb = TW[T.FIVE]; }
+  else {
+    let best = t0 > t1 ? t0 : t1; if (t2 > best) best = t2; if (t3 > best) best = t3;
+    const thr = ((b0 >> 4) & 3) + ((b1 >> 4) & 3) + ((b2 >> 4) & 3) + ((b3 >> 4) & 3);
+    const hi = ((b0 >> 6) & 1) + ((b1 >> 6) & 1) + ((b2 >> 6) & 1) + ((b3 >> 6) & 1);
+    const mid = (b0 >>> 7) + (b1 >>> 7) + (b2 >>> 7) + (b3 >>> 7);
+    if (thr >= 2) { tb = T.OFOUR; hb = 0; sb = TW[T.OFOUR]; }
+    else { tb = thr === 1 ? (best > T.FOUR ? best : T.FOUR) : best; hb = hi; sb = TW[tb] * (hi >= 2 ? 5 : (hi >= 1 && mid >= 1 ? 2.5 : 1)); }
+  }
+  b0 = w0 >>> 8; b1 = w1 >>> 8; b2 = w2 >>> 8; b3 = w3 >>> 8;
+  t0 = b0 & 15; t1 = b1 & 15; t2 = b2 & 15; t3 = b3 & 15;
+  let tw, hw, sw;
+  if (t0 === T.FIVE || t1 === T.FIVE || t2 === T.FIVE || t3 === T.FIVE) { tw = T.FIVE; hw = 1; sw = TW[T.FIVE]; }
+  else {
+    let best = t0 > t1 ? t0 : t1; if (t2 > best) best = t2; if (t3 > best) best = t3;
+    const thr = ((b0 >> 4) & 3) + ((b1 >> 4) & 3) + ((b2 >> 4) & 3) + ((b3 >> 4) & 3);
+    const hi = ((b0 >> 6) & 1) + ((b1 >> 6) & 1) + ((b2 >> 6) & 1) + ((b3 >> 6) & 1);
+    const mid = (b0 >>> 7) + (b1 >>> 7) + (b2 >>> 7) + (b3 >>> 7);
+    if (thr >= 2) { tw = T.OFOUR; hw = 0; sw = TW[T.OFOUR]; }
+    else { tw = thr === 1 ? (best > T.FOUR ? best : T.FOUR) : best; hw = hi; sw = TW[tw] * (hi >= 2 ? 5 : (hi >= 1 && mid >= 1 ? 2.5 : 1)); }
+  }
+  C_META[i] = tb | (hb << 4) | (tw << 8) | (hw << 12); C_SB[i] = sb; C_SW[i] = sw;
+}
+function initIncTable(b) {
+  uPtr = 0; incDirty = -1;
+  for (let i = 0; i < N * N; i++) {
+    if (b[i]) continue;
+    const base = i * 4;
+    for (let d = 0; d < 4; d++) DIR_BW[base + d] = evalDirBoth(b, i, d);
+    updateCellSummary(i);
+  }
+}
+function incUpdateMove(b, m) {
+  const sbase = m * 4;
+  for (let d = 0; d < 4; d++) {
+    const off = OFF4[d];
+    let steps = STEP_P[sbase + d], c = m;
+    for (let k = 0; k < steps; k++) {
+      c += off;
+      if (b[c] === EMPTY) {
+        const idx4 = c * 4 + d, nw = evalDirBoth(b, c, d), ow = DIR_BW[idx4];
+        if (nw !== ow) { U_NI[uPtr] = c; U_IDX4[uPtr] = idx4; U_DBW[uPtr] = ow; U_META[uPtr] = C_META[c]; U_SB[uPtr] = C_SB[c]; U_SW[uPtr] = C_SW[c]; uPtr++; DIR_BW[idx4] = nw; updateCellSummary(c); }
+      }
+    }
+    steps = STEP_M[sbase + d]; c = m;
+    for (let k = 0; k < steps; k++) {
+      c -= off;
+      if (b[c] === EMPTY) {
+        const idx4 = c * 4 + d, nw = evalDirBoth(b, c, d), ow = DIR_BW[idx4];
+        if (nw !== ow) { U_NI[uPtr] = c; U_IDX4[uPtr] = idx4; U_DBW[uPtr] = ow; U_META[uPtr] = C_META[c]; U_SB[uPtr] = C_SB[c]; U_SW[uPtr] = C_SW[c]; uPtr++; DIR_BW[idx4] = nw; updateCellSummary(c); }
+      }
+    }
+  }
+}
+function incUndo(uBase) {
+  while (uPtr > uBase) { uPtr--; const c = U_NI[uPtr]; DIR_BW[U_IDX4[uPtr]] = U_DBW[uPtr]; C_META[c] = U_META[uPtr]; C_SB[c] = U_SB[uPtr]; C_SW[c] = U_SW[uPtr]; }
+}
+function candidateBuf(b, radius) {
+  const R = radius === undefined ? 2 : radius;
+  if (AI_FAST_LEAF && (R === 1 || (R === 2 && AI_LINE_CAND))) {
+    if (CAND_STAMP > 1e9) { CAND_MARK.fill(0); CAND_STAMP = 0; }
+    const stamp = ++CAND_STAMP;
+    let len = 0;
+    if (R === 1) {
+      for (let i = 0; i < N * N; i++) {
+        if (!b[i]) continue;
+        const base = i * 8, cnt = NB1_LEN[i];
+        for (let k = 0; k < cnt; k++) { const ni = NB1_IDX[base + k]; if (!b[ni] && CAND_MARK[ni] !== stamp) { CAND_MARK[ni] = stamp; CAND_BUF[len++] = ni; } }
+      }
+    } else {
+      for (let i = 0; i < N * N; i++) {
+        if (!b[i]) continue;
+        const base = i * 16, cnt = NB2_LINE_LEN[i];
+        for (let k = 0; k < cnt; k++) { const ni = NB2_LINE_IDX[base + k]; if (!b[ni] && CAND_MARK[ni] !== stamp) { CAND_MARK[ni] = stamp; CAND_BUF[len++] = ni; } }
+      }
+    }
+    if (len > 0) return len;
+  }
+  const cl = candidateList(b, radius);
+  for (let q = 0; q < cl.length; q++) CAND_BUF[q] = cl[q];
+  return cl.length;
+}
+const origTopK = topKScored;
+topKScored = function(b, side, k, radius) {
+  if (!AI_FAST_TOPK || !AI_INC_EVAL || !incActive) return origTopK(b, side, k, radius);
+  if (incDirty >= 0) { incUpdateMove(b, incDirty); incDirty = -1; }
+  const clLen = candidateBuf(b, radius);
+  if (k > K_MAX) k = K_MAX;
+  const isB = side === BLACK;
+  let m = 0, winI = 1e9, blkI = -1, blkM = 0, blkS = -Infinity, blkH = 0;
+  for (let q = 0; q < clLen; q++) {
+    const i = CAND_BUF[q], meta = C_META[i];
+    const mm = isB ? (meta & 15) : ((meta >> 8) & 15);
+    if (mm === T.FIVE) { if (i < winI) winI = i; continue; }
+    if (winI < 1e9) continue;
+    const mh = isB ? ((meta >> 4) & 15) : (meta >> 12);
+    const oo = isB ? ((meta >> 8) & 15) : (meta & 15);
+    const sm = isB ? C_SB[i] : C_SW[i];
+    const so = isB ? C_SW[i] : C_SB[i];
+    const sv = sm + 0.9 * so + CENTER_W[i] + HIST[i];
+    if (oo === T.FIVE) {
+      if (sv > blkS || (sv === blkS && i < blkI)) { blkI = i; blkM = mm; blkS = sv; blkH = mh; }
+      continue;
+    }
+    if (blkI >= 0) continue;
+    if (m < k || sv > KS[m - 1] || (sv === KS[m - 1] && i < KI[m - 1])) {
+      if (m < k) m++;
+      let j = m - 1;
+      while (j > 0 && (KS[j - 1] < sv || (KS[j - 1] === sv && KI[j - 1] > i))) {
+        KS[j] = KS[j - 1]; KI[j] = KI[j - 1]; KM[j] = KM[j - 1]; KO[j] = KO[j - 1]; KH[j] = KH[j - 1]; j--;
+      }
+      KS[j] = sv; KI[j] = i; KM[j] = mm; KO[j] = oo; KH[j] = mh;
+    }
+  }
+  if (winI < 1e9) return [{ x: winI % N, y: (winI / N) | 0, i: winI, m: T.FIVE, o: 0, s: TW[T.FIVE], h: 0 }];
+  if (blkI >= 0) return [{ x: blkI % N, y: (blkI / N) | 0, i: blkI, m: blkM, o: T.FIVE, s: blkS, h: blkH }];
+  const out = new Array(m);
+  for (let j = 0; j < m; j++) {
+    const i = KI[j];
+    out[j] = { x: i % N, y: (i / N) | 0, i, m: KM[j], o: KO[j], s: KS[j], h: KH[j] };
+  }
+  return out;
+};
 
 /* ============================================================
    ④ Zobrist 置换表
@@ -1852,6 +2120,8 @@ function abSearch(b, ai, side, depth, alpha, beta, ply, t0, budget, ext) {
        同样延伸；(c.h|0) 兼容无 h 字段的旧对象（缺省 0，即旧行为）。 */
     const extend = (ext > 0 && c.m < T.FIVE && (c.m >= T.OTHREE || (AI_JUMP_EXT && (c.h | 0) >= 1))) ? 1 : 0;
     const nd = depth - 1 + extend, os = other(side);
+    if (incActive && incDirty >= 0) { incUpdateMove(b, incDirty); incDirty = -1; }
+    const uBase = uPtr; if (incActive && nd > 0) incDirty = c.i;
     let v;
     if (q === 0) {
       v = abSearch(b, ai, os, nd, alpha, beta, ply + 1, t0, budget, ext - extend);
@@ -1866,7 +2136,7 @@ function abSearch(b, ai, side, depth, alpha, beta, ply, t0, budget, ext) {
     } else {
       v = abSearch(b, ai, os, nd, alpha, beta, ply + 1, t0, budget, ext - extend);
     }
-    b[c.i] = 0;
+    b[c.i] = 0; if (incActive && nd > 0) { incDirty = -1; if (uPtr > uBase) incUndo(uBase); }
     if (v === null) return null;                   // 超时路径不写 TT
     if (maxing) {
       if (v > val) { val = v; bestI = c.i; }
@@ -1892,6 +2162,7 @@ function abSearch(b, ai, side, depth, alpha, beta, ply, t0, budget, ext) {
   return val;
 }
 function searchBest(b, ai, ordered, maxDepth, budget) {
+  if (AI_INC_EVAL && AI_FAST_TOPK) { initIncTable(b); incActive = true; }
   let best = ordered[0], bestV = -Infinity;
   const t0 = now();
   /* 迭代加深由「时间预算」驱动：跑满预算或 maxDepth 才停；
@@ -1911,6 +2182,7 @@ function searchBest(b, ai, ordered, maxDepth, budget) {
       for (let q = 0; q < lim; q++) {
         const c = ordered[q];
         b[c.i] = ai;
+        const uBase = uPtr; if (incActive && d > 1) incDirty = c.i;
         let v;
         if (c.m === T.FIVE || makesFive(b, c.x, c.y)) v = WIN_V;
         else if (q === 0 || alphaD === -Infinity) {
@@ -1920,7 +2192,7 @@ function searchBest(b, ai, ordered, maxDepth, budget) {
           if (v !== null && v > alphaD)
             v = abSearch(b, ai, other(ai), d - 1, alphaD, WIN_V, 1, t0, budget, EXT_LIMIT);
         }
-        b[c.i] = 0;
+        b[c.i] = 0; if (incActive && d > 1) { incDirty = -1; if (uPtr > uBase) incUndo(uBase); }
         if (v === null) { aborted = true; break; }   // 本轮没跑完
         if (v > curV) { curV = v; cur = c; }
         if (v > alphaD) alphaD = v;
@@ -1933,7 +2205,7 @@ function searchBest(b, ai, ordered, maxDepth, budget) {
           const pos = ordered.indexOf(cur);
           if (pos > 0) { ordered.splice(pos, 1); ordered.unshift(cur); }
         }
-        if (!AI_TIME_AWARE) break;                    // 原行为：整轮丢弃
+        if (!AI_TIME_AWARE) break deep;               // 原行为：整轮丢弃
         const half = Math.max(4, lim >> 1);
         if (AI_NARROW_RETRY && half < lim && now() - t0 + cost * (half / lim) * 1.3 < budget * 0.9) { lim = half; continue; }
         break deep;                                   // 窄树也来不及 → 保留当前最优结果
@@ -1947,12 +2219,13 @@ function searchBest(b, ai, ordered, maxDepth, budget) {
       /* PV 优先：把本轮最佳着法提到最前，下一轮先搜它（Alpha-Beta 最有效的提速手段） */
       const pos = ordered.indexOf(cur);
       if (pos > 0) { ordered.splice(pos, 1); ordered.unshift(cur); }
-      if (now() - t0 > budget) break;
+      if (now() - t0 > budget) break deep;
       /* ② 预测式收口：下一轮大约要 cost*grow；装不下就到此为止 */
       if (AI_TIME_AWARE && now() - t0 + cost * grow > budget) break deep;
       break;
     }
   }
+  incActive = false; incDirty = -1;
   return best;
 }
 
@@ -3067,6 +3340,31 @@ function selfTest() {
   const trueBlock = scoreCell(b, 7, 7, BLACK);
   const gPick = guardAgainstVcf(b, BLACK, badPick, [badPick, spiteFour, trueBlock], now(), 500);
   assert(gPick && gPick.i === idx(7, 7), 'guardAgainstVcf：不得被无关废四欺骗，应选真正解杀点 H8');
+
+  /* ---- ㉒ 死端跳眠三降格为 T.THREE + ㉓ VCT 防废四绕过 + ㉔ 增量评估逐位等价 ---- */
+  b = makeBoard();
+  b[idx(8, 6)] = BLACK;
+  b[idx(7, 6)] = b[idx(6, 6)] = WHITE;                  // (4,6) 形成 _W_WWB，右端被黑堵死，实为跳眠三
+  const pJumpSleep = pointTierEx(b, 4, 6, WHITE);
+  assert(pJumpSleep.t === T.THREE && pJumpSleep.hi === 0,
+    '死端跳眠三 _W_WWB 应评为 T.THREE 而非 T.BROKEN（实际 ' + pJumpSleep.t + '）');
+  b[idx(8, 8)] = b[idx(9, 8)] = BLACK;
+  assert(pointTierEx(b, 11, 8, BLACK).t === T.BROKEN && pointTierEx(b, 11, 8, BLACK).hi === 1,
+    '两端皆空的跳活三 _BB_B_ 仍应保持 T.BROKEN 且 hi===1');
+
+  b = makeBoard();
+  b[idx(5, 7)] = b[idx(6, 7)] = b[idx(7, 5)] = b[idx(7, 6)] = BLACK; // 黑在 (7,7) 有双活三 VCT
+  b[idx(0, 0)] = BLACK;
+  b[idx(1, 0)] = b[idx(2, 0)] = b[idx(3, 0)] = WHITE;   // 白在 (4,0) 有无关单冲四（废四）
+  const vtSpite = vctRoot(b, BLACK, 3, now(), 500);
+  assert(vtSpite && vtSpite.i === idx(7, 7), 'vctRoot：不得被防方无关废四盲化，应找出 H8 双活三必胜');
+
+  b = makeBoard();
+  b[idx(5, 7)] = b[idx(6, 7)] = b[idx(7, 5)] = b[idx(7, 6)] = BLACK;
+  b[idx(2, 4)] = BLACK;
+  b[idx(4, 4)] = b[idx(5, 4)] = b[idx(6, 4)] = WHITE;   // 白在 (3,4) 反冲四迫使黑挡 (7,4)，顺手反先解掉黑纵活三
+  const vtRefute = vctRoot(b, BLACK, 3, now(), 500);
+  assert(vtRefute === null, 'vctRoot：防方有效反冲四解杀时不得误报必胜');
 
   console.log('SELFTEST PASS');
 }
