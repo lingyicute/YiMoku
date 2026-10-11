@@ -720,6 +720,15 @@ const AI_VCT = true;
                  要求 AI_OPENTHREE_STRICT 同时开启——非严格活三转不成活四，准胜不成立。
    AI_JUMP_EXT   跳活三（BROKEN 且伴生 hi≥1）与连活三同等威胁延伸。 */
 const AI_LEAF_S3 = true, AI_JUMP_EXT = true;
+/* ㉕ 防杀闸门的 VCT 扩展：把 ⑩「送杀检查」的杀棋搜索从 VCF 补齐为 VCF+VCT。
+   进攻侧早已是 VCF+VCT（①/⑳），防守闸门却只问「对手能否证明连续冲四杀」，
+   这个不对称留下一个真实盲区：让对手获得可证明「三→活四→五」强制胜的安静手
+   会被闸门放行。实例（专家自对弈复盘）：白 E8 后 vcfRoot(黑,7)=null，但
+   vctRoot(黑,3) 证明黑 3 手强制胜——旧闸门判「安全」，新闸门正确拦截改道。
+   VCT_GUARD_LEN 与 VCT_MAXLEN 同长（三→活四→五 = 3 手）；语义与 ⑩ 一致：
+   只对「可证明的杀」拒手，节点上限 + 时间闸门超限照旧放行，绝不误判不可证明局面
+   （误报的代价是弃掉好手，与漏报一样要防）。 */
+const AI_VCT_GUARD = true, VCT_GUARD_LEN = 3;
 
 /* ---------- 层级权重（启发式评分） ---------- */
 const T = { NONE: 0, ONE: 1, TWO: 2, OTWO: 3, THREE: 4, BROKEN: 5, OTHREE: 6, FOUR: 7, OFOUR: 8, FIVE: 9 };
@@ -2313,6 +2322,10 @@ function chooseAiMove(b, diff, aiP) {
        1) 若 bl 本身让 opp 连五或形成双威胁，或反冲四直接连上 VCF，则此手必败；
        2) 在搜寻替代解杀手（checkAfterSingleFour=true）时，若 ai 冲四并非「冲四活三」
           （挡后无活三），继续检验挡完这一下废四后 opp 的 VCF 是否依然成立。
+   ㉕ 扩展：杀棋搜索从「仅 VCF」补齐为「VCF+VCT」。进攻侧（①/⑳）早已双管齐下，
+     防守闸门却只认连续冲四杀，导致「三起手」的可证明强制胜（三→活四→五）能
+     绕过闸门。现在 f===0 与 checkAfterSingleFour 两条路径在 VCF 无果后都会再问
+     一次 vctRoot（长度与 VCT_MAXLEN 一致，共用同一节点/时间闸门，超支即放行）。
    ============================================================ */
 const VCF_GUARD_LEN = 7;                       // 只找 ≤7 手的连冲四杀：够用且便宜
 const GUARD_MS = 100;                          // ⑩ 为送杀检查预留的时间（同时从搜索预算里扣掉）
@@ -2333,11 +2346,26 @@ function oppHasVcfAfter(b, ai, opp, ms, checkAfterSingleFour) {
     }
     if (!checkAfterSingleFour) return false;
     b[bl] = opp;
-    const w = openThreeCount(b, ai, 1) === 0 && !!vcfRoot(b, opp, VCF_GUARD_LEN, now(), ms);
+    /* ㉕ 挡完废四再问杀：先 VCF，后 VCT（三起手连续威胁）。
+       openThreeCount 门控两者共用——我方挡后仍持活三则「三→活四→五」
+       比对方任何 4+ 手威胁链更快，杀不成立（与 ⑬/㉑ 判据一致）。 */
+    const w = openThreeCount(b, ai, 1) === 0 && oppHasKillWithin(b, opp, ms);
     b[bl] = EMPTY;
     return w;
   }
-  return !!vcfRoot(b, opp, VCF_GUARD_LEN, now(), ms);
+  return oppHasKillWithin(b, opp, ms);
+}
+/* ㉕ 在同一份 ms 预算里依次问 VCF、VCT：VCF 找不到不等于安全——「三→活四→五」
+   这类三起手强制胜只有 VCT 能证明（vctRoot 自带「我方已有连五点则先解杀要紧」
+   的前置早退，与 ⑩ 的 f 分支语义一致）。VCT 只花 VCF 没用完的时间，
+   因此本函数的总耗时仍以 ms 为上界；两者各自的节点上限照旧兜底，
+   超限即放行——不可证明的局面绝不误判。 */
+function oppHasKillWithin(b, opp, ms) {
+  const t0 = now();
+  if (vcfRoot(b, opp, VCF_GUARD_LEN, t0, ms)) return true;
+  if (!AI_VCT_GUARD) return false;
+  const left = ms - (now() - t0);
+  return left > 8 && !!vctRoot(b, opp, VCT_GUARD_LEN, now(), left);
 }
 function guardAgainstVcf(b, ai, pick, ordered, t0, budget) {
   if (!AI_VCF_GUARD || !pick) return pick;
@@ -3365,6 +3393,27 @@ function selfTest() {
   b[idx(4, 4)] = b[idx(5, 4)] = b[idx(6, 4)] = WHITE;   // 白在 (3,4) 反冲四迫使黑挡 (7,4)，顺手反先解掉黑纵活三
   const vtRefute = vctRoot(b, BLACK, 3, now(), 500);
   assert(vtRefute === null, 'vctRoot：防方有效反冲四解杀时不得误报必胜');
+
+  /* ---- ㉕ 送杀闸门补齐 VCT：三起手强制杀也必须被拦截 ---- */
+  b = makeBoard();
+  b[idx(5, 7)] = b[idx(6, 7)] = b[idx(7, 5)] = b[idx(7, 6)] = BLACK; // 黑 (7,7) 双活三 VCT 杀（复用 ㉓ 局面）
+  assert(vcfRoot(b, BLACK, 7, now(), 500) === null,
+    '㉕ 前提：该局面无 VCF 杀——仅查 VCF 的旧闸门对它全盲');
+  const vgKill = vctRoot(b, BLACK, 3, now(), 500);
+  assert(vgKill && vgKill.i === idx(7, 7) && vgKill.len === 3,
+    '㉕ vctRoot 应证明黑 (7,7) 双活三 3 手强制胜（实际 ' + (vgKill ? vgKill.len : 'null') + '）');
+  const vgQuiet = scoreCell(b, 2, 2, WHITE);              // 白安静手：不解杀
+  const vgBlock = scoreCell(b, 7, 7, WHITE);              // 白占杀点：真正解杀
+  b[idx(2, 2)] = WHITE;
+  assert(oppHasVcfAfter(b, WHITE, BLACK, 500, false) === true,
+    '㉕ 安静手落下后 oppHasVcfAfter 应报 true（VCT 杀同样算「送杀」）');
+  b[idx(2, 2)] = EMPTY; b[idx(7, 7)] = WHITE;
+  assert(oppHasVcfAfter(b, WHITE, BLACK, 500, false) === false,
+    '㉕ 占住杀点后 oppHasVcfAfter 应报 false（VCT 检查不得误报）');
+  b[idx(7, 7)] = EMPTY;
+  const vgPick = guardAgainstVcf(b, WHITE, vgQuiet, [vgQuiet, vgBlock], now(), 500);
+  assert(vgPick && vgPick.i === idx(7, 7) && vgPick.guarded === true,
+    '㉕ guardAgainstVcf：送 VCT 杀的安静手必须被换成占杀点的解杀手');
 
   console.log('SELFTEST PASS');
 }
