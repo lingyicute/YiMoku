@@ -1396,6 +1396,10 @@ function vcfAnswer(b, atk, maxLen, m0, m1, mn) {
 /* 根：在候选里挑"最短强制杀"的一手；没有则返回 null（不改变原有行为） */
 function vcfRoot(b, atk, maxLen, t0, budget, preScored) {
   vcfBudget = VCF_CAP; vcfT0 = t0; vcfDeadline = budget;
+  /* ㉖ 修复：进攻方自身已有连五点时，下一手即胜，必须先判胜（旧版先看防方连五点，
+     会把「轮到攻方、攻方已能成五」误判为无杀，送杀闸门因此漏判）。 */
+  const ownFive = [-1];
+  if (fiveThreatCount(b, atk, 1, ownFive) > 0) return { i: ownFive[0], x: ownFive[0] % N, y: (ownFive[0] / N) | 0, len: 1 };
   const def = other(atk);
   if (fiveThreatCount(b, def, 1) > 0) return null;    // 防方已有连五点：先解杀要紧
   let sc = preScored;
@@ -1672,6 +1676,9 @@ function vctStep(b, atk, l, depth) {
 /* 根：按「攻方手数」迭代加深，返回最短的一条杀（最短 = 最可靠） */
 function vctRoot(b, atk, maxLen, t0, budget) {
   if (maxLen <= 1) return null;
+  /* ㉖ 同 vcfRoot：攻方已有连五点则下一手即胜，先判胜。 */
+  const ownFive = [-1];
+  if (fiveThreatCount(b, atk, 1, ownFive) > 0) return { i: ownFive[0], len: 1 };
   if (fiveThreatCount(b, other(atk), 1) > 0) return null;   // 防方已有连五点：先解杀要紧
   /* budget 是"还剩下多少"而不是"从 t0 起多少"：VCF 已经吃掉的那一段要加回来，
      否则 VCF 用掉一半以上时 VCT 会在第一个检查点就直接放弃。 */
@@ -2327,7 +2334,9 @@ function chooseAiMove(b, diff, aiP) {
      绕过闸门。现在 f===0 与 checkAfterSingleFour 两条路径在 VCF 无果后都会再问
      一次 vctRoot（长度与 VCT_MAXLEN 一致，共用同一节点/时间闸门，超支即放行）。
    ============================================================ */
-const VCF_GUARD_LEN = 7;                       // 只找 ≤7 手的连冲四杀：够用且便宜
+/* ㉖ 送杀闸门的 VCF 视野 7 → 14 手。连续冲四的分支极少（每手要么成五要么一个强制挡点），
+   7 手视野看不到实战中常见的 8~14 手强制冲四链，而加深的代价只是 VCF_CAP 节点上限内的少量节点。 */
+const VCF_GUARD_LEN = 14;                      // 只找 ≤14 手的连冲四杀（VCF 分支极少，加深便宜）
 const GUARD_MS = 100;                          // ⑩ 为送杀检查预留的时间（同时从搜索预算里扣掉）
 function oppHasVcfAfter(b, ai, opp, ms, checkAfterSingleFour) {
   const f = fiveThreatCount(b, ai, 2, LEAF_BLOCK);
@@ -3228,6 +3237,14 @@ function selfTest() {
   for (let k = 0; k < 4; k++) b[idx(k, 7)] = BLACK;
   const mvP = chooseAiMove(b, 'expert', BLACK);
   assert(mvP && mvP.i === idx(4, 7), '补丁后专家难度仍立即补五');
+
+  /* ---- ㉖ 送杀闸门回归：攻方已有连五点（轮到攻方）时，VCF/VCT 必须判「下一手即胜」，
+     不得因防方同时有连五点而早退返回 null（旧版在此漏判）。 ---- */
+  b = makeBoard();
+  for (let x = 0; x < 4; x++) b[idx(x, 7)] = BLACK;     // 黑五点 (4,7)
+  for (let x = 10; x < 14; x++) b[idx(x, 0)] = WHITE;   // 白也有五点
+  { const r = vcfRoot(b, BLACK, 7, now(), 1e9); assert(r && r.len === 1 && r.i === idx(4, 7), 'VCF 回归：攻方已有五点应直接判胜'); }
+  { const r = vctRoot(b, BLACK, 6, now(), 1e9); assert(r && r.len === 1, 'VCT 回归：攻方已有五点应直接判胜'); }
 
   /* ---- TW[0]：被包围空点评分不得为 NaN（层级 0 已定义） ---- */
   assert(TW[0] === 0, 'TW[0] 应为 0');
