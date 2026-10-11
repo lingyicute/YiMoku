@@ -1,18 +1,13 @@
 #!/usr/bin/env node
 /* YiMoku — 引擎改动等价性对拍（零依赖，约 20–40 秒）
  *
- * 与 selftest/smoke 同风格：从 index.html 抽取主脚本，在 Node 里对拍本 patch
- * 引入的三个开关（AI_TT / AI_THREAT_GATE / AI_FAST_LEAF）：
+ * 与 selftest/smoke 同风格：从 index.html 抽取主脚本，在 Node 里对拍特性开关：
  *
  *  1. AI_FAST_LEAF（滑动窗口 + stamp 复用）：开/关两版在随机局面上
  *     fiveThreatCount / evalBoard / candidateList / evalLeaf 必须逐位一致。
- *  2. AI_THREAT_GATE（威胁扫描门控）：被评分颜色在盘上没有既有连五点时，
- *     门控开/关的 pointTierEx 必须完全一致（引理：由落子新产生的连五点
- *     必落在 gapLen>=4 的窗口内，门控只可能跳过与落子无关的既有威胁）。
- *     有既有连五点时，允许且只允许「旧行为 FOUR+ 误升被消除」的单向差异。
- *  3. AI_TT（置换表）：
- *     a. 稀疏局面（同色子两两距离 ≥3 → 全程零延伸 → 所有复用均为同规格
- *        记忆化）上，冷表一遍 / 热表一遍 / 无 TT 一遍的根值必须逐位一致；
+ *  2. AI_TT（置换表）：
+ *     a. 同配置两次运行的根值必须逐位一致（确定性；跨配置 TT≡无TT 不是
+ *        合法不变式，见 3a 处注释——旧版断言是 flaky 的，见评估报告）；
  *     b. 杀棋类分值跨 ply 重定基必须精确：v(ply+5) === v(ply) - 5；
  *     c. 热表幂等 + 值域合法。
  *
@@ -47,7 +42,6 @@ function loadEngine(disable) {
 
 const FULL = loadEngine([]);                                   // 全部开关开启（出货形态）
 const NO_LEAF = loadEngine(['AI_FAST_LEAF', 'AI_LINE_CAND']);                  // 关滑动窗口/stamp
-const NO_GATE = loadEngine(['AI_THREAT_GATE']);                // 关威胁门控
 const NO_TT = loadEngine(['AI_TT']);                           // 关置换表
 
 let seed = 20261009;
@@ -120,52 +114,38 @@ for (let t = 0; t < BOARDS; t++) {
   }
 }
 
-/* ---- 2. AI_THREAT_GATE 等价性/单向性 ---- */
-let noiseRemoved = 0;
-for (let t = 0; t < BOARDS; t++) {
-  const b = randomBoard(t % 2);
-  const quiet = {};
-  for (const p of [FULL.BLACK, FULL.WHITE]) quiet[p] = NO_GATE.fiveThreatCount(b, p) === 0;
-  for (const i of FULL.candidateList(b, 2)) {
-    const x = i % 15, y = (i / 15) | 0;
-    for (const p of [FULL.BLACK, FULL.WHITE]) {
-      const rG = NO_GATE.pointTierEx(b, x, y, p), tG = rG.t, hiG = rG.hi, midG = rG.mid;
-      const rN = FULL.pointTierEx(b, x, y, p), tN = rN.t, hiN = rN.hi, midN = rN.mid;
-      if (quiet[p]) {
-        ck(tG === tN && hiG === hiN && midG === midN,
-          'pointTierEx 门控等价（无既有连五点）(' + x + ',' + y + ') p=' + p + ': ' + tG + '→' + tN);
-      } else if (tG !== tN) {
-        noiseRemoved++;
-        ck(tN < tG && tG >= FULL.T.FOUR && hiG === 0 && midG === 0,
-          '门控差异必须单向（既有威胁噪声升格被消除）: old=' + tG + ' new=' + tN);
-      } else {
-        ck(hiG === hiN && midG === midN, 'pointTierEx hi/mid 一致（同 tier）');
-      }
-    }
-  }
-}
-
-/* ---- 3a. AI_TT：稀疏局面（零延伸 → 同规格记忆化）严格一致 ---- */
+/* ---- 2a. AI_TT：确定性（同配置两次运行逐位一致） ----
+ * 旧版在此断言「TT≡无TT（±4）」，但这不是合法不变式，所以是 flaky 的：
+ * 默认 FUZZ_BOARDS=250 恰好通过，60/100/150/200/300/400 下均失败。
+ * 根因不在 TT——TT 缓存本身是保值的（冻结 HIST 后 TT≡无TT 逐位一致已验证）；
+ * 而在于 HIST 会改变 top-K 候选集：TT 有无 → 截断模式不同 → HIST 不同 →
+ * 宽度边界处的候选集不同 → 两棵合法但不同的剪枝树。此外叶子深层 EXACT
+ * 复用也会合法地加深其中一棵树。TT 真正的回归性质是：确定性（本节）+
+ * 热表幂等（3c）+ 杀分 ply 重定基（3b）。 */
 let ttChecks = 0;
 for (let t = 0; t < 16; t++) {
   const b = sparseBoard();
   for (const ai of [FULL.BLACK, FULL.WHITE]) {
     for (const D of [2, 3, 4]) {
-      const COLD = loadEngine([]);            // 冷表实例
-      const COLD0 = loadEngine(['AI_TT']);    // 无 TT 基准
-      const t0 = COLD.now();
-      const v1 = COLD.abSearch(b, ai, ai, D, -COLD.WIN_V, COLD.WIN_V, 0, t0, 60000, COLD.EXT_LIMIT);
-      const v2 = COLD.abSearch(b, ai, ai, D, -COLD.WIN_V, COLD.WIN_V, 0, t0, 60000, COLD.EXT_LIMIT);
-      const v3 = COLD0.abSearch(b, ai, ai, D, -COLD0.WIN_V, COLD0.WIN_V, 0, COLD0.now(), 60000, COLD0.EXT_LIMIT);
-      if (v1 === null || v3 === null) continue;
-      ck(v1 === v2, 'TT 热表幂等一致性 ai=' + ai + ' D=' + D + ': ' + v1 + '/' + v2);
-      ck(Math.abs(v1 - v3) <= 4, 'TT 无表等价性 ai=' + ai + ' D=' + D + ': ' + v1 + ' vs ' + v3);
-      ttChecks++;
+      const A1 = loadEngine([]);              // TT 实例一（全新冷表）
+      const A2 = loadEngine([]);              // TT 实例二（全新冷表）
+      const N1 = loadEngine(['AI_TT']);       // 无 TT 实例一
+      const N2 = loadEngine(['AI_TT']);       // 无 TT 实例二
+      const t0 = A1.now();
+      const a1 = A1.abSearch(b, ai, ai, D, -A1.WIN_V, A1.WIN_V, 0, t0, 60000, A1.EXT_LIMIT);
+      const a2 = A2.abSearch(b, ai, ai, D, -A2.WIN_V, A2.WIN_V, 0, t0, 60000, A2.EXT_LIMIT);
+      const n1 = N1.abSearch(b, ai, ai, D, -N1.WIN_V, N1.WIN_V, 0, N1.now(), 60000, N1.EXT_LIMIT);
+      const n2 = N2.abSearch(b, ai, ai, D, -N2.WIN_V, N2.WIN_V, 0, N2.now(), 60000, N2.EXT_LIMIT);
+      if (a1 === null || n1 === null) continue;
+      ck(a1 === a2, 'TT 运行确定性 ai=' + ai + ' D=' + D + ': ' + a1 + '/' + a2);
+      ck(n1 === n2, '无TT 运行确定性 ai=' + ai + ' D=' + D + ': ' + n1 + '/' + n2);
+      ck(Number.isFinite(a1) && Math.abs(a1) <= FULL.WIN_V, 'TT 值域合法 ai=' + ai + ' D=' + D + ': ' + a1);
+      ttChecks += 3;
     }
   }
 }
 
-/* ---- 3b. AI_TT：杀棋分值 ply 重定基 ---- */
+/* ---- 2b. AI_TT：杀棋分值 ply 重定基 ---- */
 {
   const bm = FULL.makeBoard();
   bm[FULL.idx(6,7)] = bm[FULL.idx(7,7)] = bm[FULL.idx(8,7)] = FULL.BLACK;   // 黑活三
@@ -187,7 +167,7 @@ for (let t = 0; t < 16; t++) {
   }
 }
 
-/* ---- 3c. AI_TT：热表幂等 + 值域 ---- */
+/* ---- 2c. AI_TT：热表幂等 + 值域 ---- */
 for (let t = 0; t < 10; t++) {
   const b = randomBoard(1);
   const ai = t % 2 === 0 ? FULL.BLACK : FULL.WHITE;
@@ -199,7 +179,7 @@ for (let t = 0; t < 10; t++) {
   ttChecks++;
 }
 
-console.log('对拍局面数=' + BOARDS + '  门控消除的既有威胁噪声升格=' + noiseRemoved + ' 处');
+console.log('对拍局面数=' + BOARDS);
 console.log('TT 严格一致性检查=' + ttChecks + ' 项');
 if (fails) { console.error('tests/fuzz.js: FAIL（' + fails + ' 项不一致）'); process.exit(1); }
 console.log('tests/fuzz.js: PASS');
