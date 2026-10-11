@@ -61,7 +61,7 @@ Hard and Expert don't guess — they search. Candidate moves are restricted to t
 
 ### 3. Difficulty as a Spectrum, Not a Switch
 
-Easy and Medium are *designed* to be beatable: Easy only blocks your winning five ~62% of the time and picks noisily among the top-scored candidates, while Medium plays greedy with ±3.5% jitter. The result is an opponent that ramps from casual to punishing without ever changing the rules.
+Easy and Medium are *designed* to be beatable: Easy only blocks your winning five ~82% of the time and picks noisily among the top-scored candidates, while Medium plays greedy with ±3.5% jitter. The result is an opponent that ramps from casual to punishing without ever changing the rules.
 
 ### 4. Zero-Dependency, Zero-Network Architecture
 
