@@ -176,6 +176,17 @@ const click = el => el.dispatchEvent(new window.MouseEvent('click', { bubbles: t
     if (S.records.ai.win !== initialWins + 1 || S.records.total !== initialTotal + 1) {
       throw new Error("悔棋后再次获胜战绩应只计一次");
     }
+
+    // 测试「清除记录」后终局悔棋不恢复旧战绩
+    // 此时已有 1 局战绩
+    S.records = freshRecords();
+    S.lastRecordSnapshot = null;
+    store.setJSON("records", S.records);
+    renderRecords();
+    if (S.records.total !== 0) throw new Error("清除后战绩应为 0");
+    undo();
+    if (S.records.total !== 0) throw new Error("清除记录后终局悔棋不应恢复已清除的旧战绩");
+
   `);
 
   kd('r');
