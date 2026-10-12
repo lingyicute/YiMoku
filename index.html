@@ -2523,6 +2523,7 @@ function searchBest(b, ai, ordered, maxDepth, budget) {
     for (;;) {                             // ② 同一深度：超时就把根宽减半重试，而不是整轮扔掉
       const tI = now();
       let cur = ordered[0], curV = -Infinity, alphaD = -Infinity, aborted = false;
+      let curIdx = 0;
       for (let q = 0; q < lim; q++) {
         const c = ordered[q];
         b[c.i] = ai;
@@ -2550,7 +2551,7 @@ function searchBest(b, ai, ordered, maxDepth, budget) {
         }
         if (v === null) { aborted = true; break; }   // 本轮没跑完
         c.lose = v <= -TT_MATE_TH ? v : 0;
-        if (v > curV) { curV = v; cur = c; }
+        if (v > curV) { curV = v; cur = c; curIdx = q; }
         if (v > alphaD) alphaD = v;
         if (curV >= WIN_V) break;
       }
@@ -2559,8 +2560,8 @@ function searchBest(b, ai, ordered, maxDepth, budget) {
         if (AI_TIME_AWARE && curV > -Infinity &&
             (bestV === -Infinity || cur === best || curV >= TT_MATE_TH || (ordered[0].lose < 0 && curV > ordered[0].lose))) {
           best = cur; bestV = curV;
-          const pos = ordered.indexOf(cur);
-          if (pos > 0) { ordered.splice(pos, 1); ordered.unshift(cur); }
+          const pos = curIdx;
+          if (pos > 0) { ordered.splice(pos, 1); ordered.unshift(cur); } curIdx = 0;
         }
         if (!AI_TIME_AWARE) break deep;               // 原行为：整轮丢弃
         const half = Math.max(4, lim >> 1);
@@ -2574,8 +2575,8 @@ function searchBest(b, ai, ordered, maxDepth, budget) {
       }
       if (bestV >= WIN_V - d) break;       // WIN_V-ply 级的必然胜也可提前收敛
       /* PV 优先：把本轮最佳着法提到最前，下一轮先搜它；已被证伪为必败的候选沉底 */
-      const pos = ordered.indexOf(cur);
-      if (pos > 0) { ordered.splice(pos, 1); ordered.unshift(cur); }
+      const pos = curIdx;
+      if (pos > 0) { ordered.splice(pos, 1); ordered.unshift(cur); } curIdx = 0;
       for (let i = lim - 1, end = lim - 1; i >= 1; i--) {
         if (ordered[i].lose < 0) { const lc = ordered.splice(i, 1)[0]; ordered.splice(end--, 0, lc); }
       }
