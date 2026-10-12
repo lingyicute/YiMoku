@@ -1125,6 +1125,33 @@ function openThreeCount(b, side, cap = 2) {
   return n;
 }
 
+/* 对方双活三不等于必败：两条威胁可能共用一个防守点，轮走方也可能
+   反冲四夺先。仅在每个合法应手都留下可兑现的严格活三时给准杀分。
+   调用前双方均无连五点。反冲四一律视为「尚未证明」，交回常规搜索，
+   不在叶子里扩展另一棵 VCT 树。只重扫原有活三的线，避免逐应手全盘扫描；
+   此函数不碰增量表，试子在返回前撤销，可供两条叶评估路径共用。 */
+function opponentThreesForced(b, side) {
+  if (!AI_OPENTHREE_STRICT) return false;
+  const opp = other(side), lines = [];
+  for (let li = 0; li < LINES.length; li++) {
+    if (openThreeOnLine(b, LINES[li], opp) > 0) lines.push(LINES[li]);
+  }
+  if (!lines.length) return false;
+  for (let i = 0; i < N * N; i++) {
+    if (b[i]) continue;
+    /* 必须检查全部空点，不受 top-K、候选半径或历史排序裁剪。 */
+    if (pointTier(b, i % N, (i / N) | 0, side) >= T.FOUR) return false;
+    b[i] = side;
+    let survives = false;
+    for (let j = 0; j < lines.length; j++) {
+      if (openThreeOnLine(b, lines[j], opp) > 0) { survives = true; break; }
+    }
+    b[i] = EMPTY;
+    if (!survives) return false;
+  }
+  return true;
+}
+
 /* 叶节点战术延伸：若唯一的必胜点迫使当前方挡棋，就把这步强制应手走完，
    再沿新产生的单点冲四继续延伸；稳定局面回到静态评估。只沿唯一强制挡点走，
    不扩宽分支，因此不会把叶子变成另一棵完整搜索树。
@@ -1249,11 +1276,8 @@ function evalLeaf(b, ai, side, ply) {
     b[blk] = EMPTY;
     return v;
   }
-  /* 双活三判定（可证明的准胜负）：持有两个活三的一方 3 手内必成五——
-     取值低于「已证明胜负」（WIN_V 级）但远高于任何静态分，消除叶子节点的活三盲区。
-     ★ 修复：必须加 oppFives === 0 门控。对方恰有 1 个连五点（冲四）时，
-     「双活三 → 3 手成五」不再可证明：对方 1 手即连五，快过我方 三→活四→五
-     的 2 手；我方要么先挡五（先手权易手，双活三攻势被打断），要么被直接连五。 */
+  /* 连五威胁优先于活三。轮走方持严格活三可直接造活四；非轮走方的
+     双活三还须验证全部应手，不能仅按数量判准胜（见 opponentThreesForced）。 */
   /* ㉑ 单活三准胜（可证明）：能执行到这里 oFive 必为 0（=1 走强制挡线、≥2 已判负，
      见上）——轮走方持严格活三、下手补成活四，对方在盘上没有连五点就只能挡其一，
      再下手即连五。这是 evalForcedLine 里 ⑬ 判据在 evalLeaf 的对齐：此前 evalLeaf
@@ -1267,7 +1291,10 @@ function evalLeaf(b, ai, side, ply) {
   }
   for (let j = 0, c3 = 0; j < n3O; j++) {
     c3 += openThreeOnLine(b, LINES[L3_OTH[j]], oth);
-    if (c3 >= 2) return maxing ? -(WIN_V / 4 - (ply + 1)) : (WIN_V / 4 - (ply + 1));
+    if (c3 >= 2) {
+      if (opponentThreesForced(b, side)) return maxing ? -(WIN_V / 4 - (ply + 1)) : (WIN_V / 4 - (ply + 1));
+      break;
+    }
   }
   return maxing ? s : -s;
 }
@@ -1321,6 +1348,12 @@ function evalBoard(b, ai) {
 const VCF_CAP = 900;                           // 每次决策允许的 VCF 节点上限
 const VCF_MAXLEN = { hard: 6, expert: 9 };     // 攻方最多连续冲几手（专家看得更远）
 let vcfBudget = 0, vcfT0 = 0, vcfDeadline = 1e9;
+/* 在根候选和递归入口统一检查；不能依赖回溯后节点余数恰好为 0，
+   否则某些分支根本不会检查时间。超时置零，所有祖先立即停止新分支。 */
+function vcfStopped() {
+  if (vcfBudget <= 0 || now() - vcfT0 >= vcfDeadline) { vcfBudget = 0; return true; }
+  return false;
+}
 /* p 的全部"下一手即连五"的点（全局扫描，不去重方向，天然去重格子） */
 function fivePts(b, p) {
   const out = [];
@@ -1355,7 +1388,8 @@ function vcfCandidates(b, atk) {
      · 若防方上一手挡四时顺带形成了自己的反冲四（forced >= 0），atk 本手唯有
        挡住 forced 同时反冲四（反先）一条路可走，无需遍历全盘候选。 */
 function vcfStep(b, atk, maxLen, forced) {
-  if (maxLen <= 0 || --vcfBudget < 0) return 0;
+  if (maxLen <= 0 || vcfStopped()) return 0;
+  vcfBudget--;
   if (forced !== undefined && forced >= 0) {
     pointTierEx(b, forced % N, (forced / N) | 0, atk);
     if (P_RES.t === T.FIVE) return 1;
@@ -1368,19 +1402,19 @@ function vcfStep(b, atk, maxLen, forced) {
   }
   const forcing = vcfCandidates(b, atk);
   for (let q = 0; q < forcing.length; q++) {
+    if (vcfStopped()) return 0;
     const c = forcing[q];
     if (c.tier === T.FIVE) return 1;
     b[c.i] = atk;
     const r = vcfAnswer(b, atk, maxLen, c.m0, c.m1, c.mn);
     b[c.i] = EMPTY;
     if (r) return 1 + r;
-    if ((vcfBudget & 127) === 0 && now() - vcfT0 > vcfDeadline) { vcfBudget = 0; return 0; }
   }
   return 0;
 }
 /* 攻方刚落子（盘上含其新子），轮到防方：返回攻方还需的手数，0 = 被防住 */
 function vcfAnswer(b, atk, maxLen, m0, m1, mn) {
-  if (maxLen <= 0) return 0;
+  if (maxLen <= 0 || vcfStopped()) return 0;
   const def = other(atk);
   if (mn === undefined) {
     if (fiveThreatCount(b, def, 1) > 0) return 0;     // 防方随时可成五，这条线不成立
@@ -1411,6 +1445,7 @@ function vcfRoot(b, atk, maxLen, t0, budget, preScored) {
   if (fiveThreatCount(b, atk, 1, ownFive) > 0) return { i: ownFive[0], x: ownFive[0] % N, y: (ownFive[0] / N) | 0, len: 1 };
   const def = other(atk);
   if (fiveThreatCount(b, def, 1) > 0) return null;    // 防方已有连五点：先解杀要紧
+  if (vcfStopped()) return null;
   let sc = preScored;
   if (!sc) {
     const cl = candidateList(b, 2);
@@ -1424,6 +1459,7 @@ function vcfRoot(b, atk, maxLen, t0, budget, preScored) {
   }
   let best = null, bestLen = 1e9;
   for (const c of sc) {
+    if (vcfStopped()) break;
     if (c.m < T.FOUR) continue;                        // 只有成五/成四是逼迫手
     pointTierEx(b, c.x, c.y, atk);
     const tier = P_RES.t;
@@ -2105,7 +2141,8 @@ evalLeaf = function(b, ai, side, ply) {
   }
   const S3_NEED = (AI_LEAF_S3 && AI_OPENTHREE_STRICT) ? 1 : 2;
   if ((isB ? totO3B : totO3W) >= S3_NEED) return maxing ? (WIN_V / 4 - ply) : -(WIN_V / 4 - ply);
-  if ((isB ? totO3W : totO3B) >= 2) return maxing ? -(WIN_V / 4 - (ply + 1)) : (WIN_V / 4 - (ply + 1));
+  if ((isB ? totO3W : totO3B) >= 2 && opponentThreesForced(b, side))
+    return maxing ? -(WIN_V / 4 - (ply + 1)) : (WIN_V / 4 - (ply + 1));
   return ai === BLACK ? totScrB : -totScrB;
 };
 
@@ -2595,7 +2632,7 @@ function searchBest(b, ai, ordered, maxDepth, budget) {
          剩余 30.6%（中位 26.9%，最大 66.2%）的搜索预算未被使用。剩余 <20% 时
          维持原判：半轮连根 PV 的一手都验证不完，纯浪费。 */
       if (AI_TIME_AWARE &&
-          (budget - (now() - t0) < budget * 0.2 || now() - t0 + cost * grow > budget)) break deep;
+          (budget - (now() - t0) < budget * 0.2 && now() - t0 + cost * grow > budget)) break deep;
       break;
     }
   }
