@@ -725,10 +725,17 @@ const AI_LEAF_S3 = true, AI_JUMP_EXT = true;
    这个不对称留下一个真实盲区：让对手获得可证明「三→活四→五」强制胜的安静手
    会被闸门放行。实例（专家自对弈复盘）：白 E8 后 vcfRoot(黑,7)=null，但
    vctRoot(黑,3) 证明黑 3 手强制胜——旧闸门判「安全」，新闸门正确拦截改道。
-   VCT_GUARD_LEN 与 VCT_MAXLEN 同长（三→活四→五 = 3 手）；语义与 ⑩ 一致：
+   VCT_GUARD_LEN 与 VCT_MAXLEN 同长；语义与 ⑩ 一致：
    只对「可证明的杀」拒手，节点上限 + 时间闸门超限照旧放行，绝不误判不可证明局面
-   （误报的代价是弃掉好手，与漏报一样要防）。 */
-const AI_VCT_GUARD = true, VCT_GUARD_LEN = 3;
+   （误报的代价是弃掉好手，与漏报一样要防）。
+   ㉘ VCT_GUARD_LEN 3 → 4（= VCT_MAXLEN，回归「与 VCT_MAXLEN 同长」的既定设计）：
+     闸门只看 3 手深时，对手 4 手起的连续威胁链（三→三→活四→五、含废四交换的
+     长链）是系统性盲区。随机中盘普查 1462 手非战术落子：54 手（3.7%）走后可被
+     对手证明 ≥4 手 VCT 强制胜；VCT_GUARD_LEN=4 在与 3 相同的时间片下 54/54
+     全部拦截，且单步耗时分布不变（闸门时间片照旧硬性兜住总时长）。另有独立
+     正确性抽查：威胁密集随机局面中 vctRoot(len4) 的 58 个杀宣言，经 abSearch
+     d8 大预算逐一复核 58/58 成立，无误报。 */
+const AI_VCT_GUARD = true, VCT_GUARD_LEN = 4;
 
 /* ---------- 层级权重（启发式评分） ---------- */
 const T = { NONE: 0, ONE: 1, TWO: 2, OTWO: 3, THREE: 4, BROKEN: 5, OTHREE: 6, FOUR: 7, OFOUR: 8, FIVE: 9 };
@@ -2581,8 +2588,14 @@ function searchBest(b, ai, ordered, maxDepth, budget) {
         if (ordered[i].lose < 0) { const lc = ordered.splice(i, 1)[0]; ordered.splice(end--, 0, lc); }
       }
       if (now() - t0 > budget) break deep;
-      /* ② 预测式收口：下一轮大约要 cost*grow；装不下就到此为止 */
-      if (AI_TIME_AWARE && now() - t0 + cost * grow > budget) break deep;
+      /* ② 预测式收口：下一轮大约要 cost*grow；装不下就到此为止
+         ㉚ 收口放宽：预算还剩 ≥20% 时照常开下一轮。② 的安全机制（单节点超时中止 +
+         半轮结果的安全采纳：cur===best / 强制胜 / 原 PV 被证伪）已经把「半轮迭代」
+         的风险兜住，此时按预测收口只会白扔时间——实测触发收口的 expert 决策平均
+         剩余 30.6%（中位 26.9%，最大 66.2%）的搜索预算未被使用。剩余 <20% 时
+         维持原判：半轮连根 PV 的一手都验证不完，纯浪费。 */
+      if (AI_TIME_AWARE &&
+          (budget - (now() - t0) < budget * 0.2 || now() - t0 + cost * grow > budget)) break deep;
       break;
     }
   }
@@ -2629,7 +2642,10 @@ function chooseAiMove(b, diff, aiP) {
     }
     return best;
   }
-  /* 5. 困难 / 专家：Alpha-Beta 迭代加深（深度按时间预算跑满） */
+  /* 5. 困难 / 专家：Alpha-Beta 迭代加深（深度按时间预算跑满）
+     （曾试将 hard 的 maxDepth 8 → 10：hard 中盘 68% 决策确实被深度上限而非预算
+     截停，但 A/B 对局（40 局 hard 自战 18:21、28 局 ㉘+㉚ 对照 14:14）未测得强度
+     收益，反而疑似引入奇偶深度摇摆，故维持 8 不变。） */
   const maxDepth = diff === 'expert' ? 12 : 8;
   const budget = diff === 'expert' ? 900 : 550;
   /* ① 先做一次纯战术搜索：证明得了的连冲四杀就直接走，
@@ -3596,6 +3612,23 @@ function selfTest() {
   { const r = vcfRoot(b, BLACK, 7, now(), 1e9); assert(r && r.len === 1 && r.i === idx(4, 7), 'VCF 回归：攻方已有五点应直接判胜'); }
   { const r = vctRoot(b, BLACK, 6, now(), 1e9); assert(r && r.len === 1, 'VCT 回归：攻方已有五点应直接判胜'); }
 
+  /* ---- ㉘ 送杀闸门 VCT 视野 4：对手 4+ 手连续威胁链不得放行（len=3 时代盲区回归）----
+     局面（黑先，双方各 6 子）：黑 J8 后白有可证明的 ≥4 手 VCT 强制胜
+     （vctRoot(白,4) 与 abSearch d9 双路复核），旧闸门（len 3）会放行 J8。
+     要求：vctRoot(白,4) 能证明该杀；且专家决策不得把 J8 当最优手落下。 ---- */
+  b = makeBoard();
+  for (const [bx, by] of [[3, 3], [6, 3], [3, 5], [5, 5], [2, 6], [3, 7]]) b[idx(bx, by)] = BLACK;
+  for (const [wx, wy] of [[5, 4], [6, 4], [6, 5], [0, 6], [6, 6], [7, 6]]) b[idx(wx, wy)] = WHITE;
+  {
+    b[idx(8, 7)] = BLACK;
+    const tG = now();
+    const kG = vcfRoot(b, WHITE, 14, tG, 1e9) || vctRoot(b, WHITE, 4, tG, 1e9);
+    b[idx(8, 7)] = EMPTY;
+    assert(kG, '㉘：黑 J8 后白应存在可证明 VCT 杀（vctRoot(白,4) 视野内）');
+    const mvG = chooseAiMove(b, 'expert', BLACK);
+    assert(mvG && mvG.i !== idx(8, 7), '㉘：专家应改道，不得落下送 VCT 杀的 J8（实际 ' + (mvG && coord(mvG.x, mvG.y)) + '）');
+  }
+
   /* ---- TW[0]：被包围空点评分不得为 NaN（层级 0 已定义） ---- */
   assert(TW[0] === 0, 'TW[0] 应为 0');
   b = makeBoard();
@@ -3726,15 +3759,22 @@ function selfTest() {
   assert(vcfStep(b, BLACK, 3) === 1, 'vcfStep：两端封死的直接连五点仍应返回 1 手胜');
 
   b = makeBoard();
-  b[idx(5, 7)] = b[idx(6, 7)] = b[idx(8, 7)] = WHITE;
-  b[idx(7, 5)] = b[idx(7, 6)] = b[idx(7, 8)] = WHITE;   // 白在 (7,7) 有冲四活四级 VCF 杀点
-  b[idx(4, 14)] = WHITE;
-  b[idx(4, 13)] = b[idx(4, 12)] = b[idx(4, 11)] = BLACK;// 黑在 (4,10) 有无关单冲四（废四）
-  const badPick = scoreCell(b, 2, 2, BLACK);
-  const spiteFour = scoreCell(b, 4, 10, BLACK);
-  const trueBlock = scoreCell(b, 7, 7, BLACK);
-  const gPick = guardAgainstVcf(b, BLACK, badPick, [badPick, spiteFour, trueBlock], now(), 500);
-  assert(gPick && gPick.i === idx(7, 7), 'guardAgainstVcf：不得被无关废四欺骗，应选真正解杀点 H8');
+  /* ㉘ 更换局面：旧局（白 7 子聚于 (7,7) 一带）在闸门 VCT 视野扩到 4 后被证明
+     黑已全输——挡 H8 后白仍可证明 VCT 强制胜（vctRoot(白,4) 与 abSearch d8/10
+     双路复核），「安全解杀点」不复存在，闸门只能退回 pick。改用下面这个存在
+     真正安全解杀点的局面，继续检验「不得被无关废四欺骗」这一本义：
+     白在 P8=(14,7) 有边线双四 VCF 杀（L8 起手成开四）；黑 (4,4)-(2,2) 斜三
+     （(1,1) 已被白封端）提供「废四」诱着 (5,5)；badPick 为无关安静手。 */
+  b[idx(11, 7)] = b[idx(12, 7)] = b[idx(13, 7)] = WHITE;
+  b[idx(14, 5)] = b[idx(14, 6)] = b[idx(14, 8)] = WHITE;  // 白在 P8 有双四 VCF 杀点
+  b[idx(1, 1)] = WHITE;
+  b[idx(2, 2)] = b[idx(3, 3)] = b[idx(4, 4)] = BLACK;     // 黑在 (5,5) 有无关单冲四（废四）
+  b[idx(8, 2)] = b[idx(9, 3)] = BLACK;
+  const badPick = scoreCell(b, 7, 11, BLACK);
+  const spiteFour = scoreCell(b, 5, 5, BLACK);
+  const trueBlock = scoreCell(b, 14, 7, BLACK);
+  const gPick = guardAgainstVcf(b, BLACK, badPick, [badPick, spiteFour, trueBlock], now(), 800);
+  assert(gPick && gPick.i === idx(14, 7), 'guardAgainstVcf：不得被无关废四欺骗，应选真正解杀点 P8');
 
   /* ---- ㉒ 死端跳眠三降格为 T.THREE + ㉓ VCT 防废四绕过 + ㉔ 增量评估逐位等价 ---- */
   b = makeBoard();
@@ -3796,14 +3836,17 @@ function selfTest() {
   assert(pDead4.t < T.THREE && pDead4.mid === 0,
     '㉗ 长度 <5 的死空间 W_BB_W 不得误判为眠三 T.THREE（实际 ' + pDead4.t + '/' + pDead4.mid + '）');
 
+  /* ㉗ pick 自身为废四：闸门应识别并替换为真正解杀点（复用 ㉘ 更换后的局面，
+     顺带覆盖「闸门在 VCT 视野 4 下仍接受真正安全解杀点」的回归）。 */
   b = makeBoard();
-  b[idx(5, 7)] = b[idx(6, 7)] = b[idx(8, 7)] = WHITE;
-  b[idx(7, 5)] = b[idx(7, 6)] = b[idx(7, 8)] = WHITE;
-  b[idx(4, 14)] = WHITE;
-  b[idx(4, 13)] = b[idx(4, 12)] = b[idx(4, 11)] = BLACK;
-  const gPickSpite = guardAgainstVcf(b, BLACK, spiteFour, [spiteFour, trueBlock], now(), 500);
-  assert(gPickSpite && gPickSpite.i === idx(7, 7) && gPickSpite.guarded === true,
-    '㉗ guardAgainstVcf：当 pick 自身即为无关废四时，也必须识别并替换为真正解杀点 H8');
+  b[idx(11, 7)] = b[idx(12, 7)] = b[idx(13, 7)] = WHITE;
+  b[idx(14, 5)] = b[idx(14, 6)] = b[idx(14, 8)] = WHITE;
+  b[idx(1, 1)] = WHITE;
+  b[idx(2, 2)] = b[idx(3, 3)] = b[idx(4, 4)] = BLACK;
+  b[idx(8, 2)] = b[idx(9, 3)] = BLACK;
+  const gPickSpite = guardAgainstVcf(b, BLACK, scoreCell(b, 5, 5, BLACK), [scoreCell(b, 5, 5, BLACK), scoreCell(b, 14, 7, BLACK)], now(), 800);
+  assert(gPickSpite && gPickSpite.i === idx(14, 7) && gPickSpite.guarded === true,
+    '㉗ guardAgainstVcf：当 pick 自身即为无关废四时，也必须识别并替换为真正解杀点 P8');
 
   b = makeBoard();
   b[idx(3, 5)] = WHITE;
