@@ -735,7 +735,12 @@ const AI_LEAF_S3 = true, AI_JUMP_EXT = true;
      全部拦截，且单步耗时分布不变（闸门时间片照旧硬性兜住总时长）。另有独立
      正确性抽查：威胁密集随机局面中 vctRoot(len4) 的 58 个杀宣言，经 abSearch
      d8 大预算逐一复核 58/58 成立，无误报。 */
-const AI_VCT_GUARD = true, VCT_GUARD_LEN = 4;
+/* ㉛ 沿用 ㉘ 的口径：闸门 VCT 与攻方 VCT_MAXLEN 同长，4 → 8。
+   闸门的时间来自 ⑩ 为它预留的 GUARD_MS=100ms（这份预留已从 α-β 预算中扣除）。
+   实测闸门 len=4 时单步仅用 1~3ms，预留几乎全部浪费；提到 8 后闸门花掉的正是这份
+   预留，α-β 拿到的预算不变，因此「看得更远的送杀检查」是净收益。
+   注意语义变化：视野变深会拦住更多「安静手」，见下方自检断言的相应更新。 */
+const AI_VCT_GUARD = true, VCT_GUARD_LEN = 8;
 
 /* ---------- 层级权重（启发式评分） ---------- */
 const T = { NONE: 0, ONE: 1, TWO: 2, OTWO: 3, THREE: 4, BROKEN: 5, OTHREE: 6, FOUR: 7, OFOUR: 8, FIVE: 9 };
@@ -1512,7 +1517,14 @@ function vcfRoot(b, atk, maxLen, t0, budget, preScored) {
    保守性：只对「D 里每一手都赢」才宣布必胜；节点上限 VCT_CAP + 时间闸门，
    超限立即放弃，上层照旧走 α-β，不会因此下错手。
    ============================================================ */
-const VCT_MAXLEN = { hard: 4, expert: 4 };     // 攻方最多连续走几手威胁（冲四/活三→双活三/冲四活三→活四→五 = 4 手）
+/* ㉛ 攻方 VCT 长度 4 → hard 6 / expert 8：
+   4 手只覆盖「三→三→活四→五」这一档最短链。实测（随机中盘 126 局，双方均无连五点）：
+   其中 10 局存在 5~8 手强制胜，maxLen=4 全部漏掉；放大到 8 后平均 30ms / p90 108ms /
+   上限 154ms 即可证明（VCT 时间片 = 0.35×预算，expert 为 315ms，远未用满）。
+   独立验证器（不复用本引擎搜索代码，防方第一层可走遍全部空点）复核 8 个此类杀着：
+   6 个完全成立，2 个受限于验证器自身节点上限，无一例被证伪。
+   节点上限 VCT_CAP 实测无关：cap 6000 与 24000 的结论 126/126 一致，故不动。 */
+const VCT_MAXLEN = { hard: 6, expert: 8 };     // 攻方最多连续走几手威胁
 const VCT_CAP = 6000;                          // 每次决策的 VCT 节点上限
 const VCT_CAND_CAP = 14;                       // 每层最多考虑几个攻方候选（超出即截断，只损失完备性）
 const VCT_DEF_CAP = 14;                        // 防守点超过这个数就认为该手不够逼迫，跳过
@@ -3852,12 +3864,22 @@ function selfTest() {
   assert(oppHasVcfAfter(b, WHITE, BLACK, 500, false) === true,
     '㉕ 安静手落下后 oppHasVcfAfter 应报 true（VCT 杀同样算「送杀」）');
   b[idx(2, 2)] = EMPTY; b[idx(7, 7)] = WHITE;
-  assert(oppHasVcfAfter(b, WHITE, BLACK, 500, false) === false,
-    '㉕ 占住杀点后 oppHasVcfAfter 应报 false（VCT 检查不得误报）');
+  /* ㉛ 视野 4 → 8 后本条断言的语义变了：独立验证器（不复用本引擎搜索代码）证明
+     白占 (7,7) 只挡掉了 3 手杀 —— 黑随后仍有 6 手 VCT 强制胜（白该局面已无处可逃），
+     因此闸门报 true 是「视野变深后的正确判断」，不是误报。
+     原语义（≤4 手）用显式调用保留为锚点。 */
+  assert(vctRoot(b, BLACK, 4, now(), 500) === null,
+    '㉛ 白占 (7,7) 后黑确无 ≤4 手 VCT 杀（原断言的适用范围）');
+  assert(vctRoot(b, BLACK, 6, now(), 500) !== null,
+    '㉛ 但黑有 6 手 VCT 杀：更深的闸门必须报「仍被送杀」');
+  assert(oppHasVcfAfter(b, WHITE, BLACK, 500, false) === true,
+    '㉛ 视野 8 下 oppHasVcfAfter 应报 true（黑 6 手杀成立，非误报）');
   b[idx(7, 7)] = EMPTY;
   const vgPick = guardAgainstVcf(b, WHITE, vgQuiet, [vgQuiet, vgBlock], now(), 500);
-  assert(vgPick && vgPick.i === idx(7, 7) && vgPick.guarded === true,
-    '㉕ guardAgainstVcf：送 VCT 杀的安静手必须被换成占杀点的解杀手');
+  /* ㉛ 同一局面在视野 8 下两个候选都被判「仍被送杀」（黑 6 手杀对 (2,2) 与 (7,7) 都成立），
+     闸门按设计在无解杀手时原样返回 pick，绝不伪造一个解杀点。 */
+  assert(vgPick && vgPick.i === idx(2, 2) && !vgPick.guarded,
+    '㉛ guardAgainstVcf：无真正解杀手时应原样返回 pick（实际 ' + JSON.stringify(vgPick) + '）');
 
   /* ---- ㉗ 假活三 O_XXX_O 与死空间修正 + pick 自身为废四拦截 + 4 手 VCT + 增量线表一致性 ---- */
   b = makeBoard();
@@ -3895,6 +3917,17 @@ function selfTest() {
   const vt4 = vctRoot(b, BLACK, 4, now(), 500);
   assert(vt4 && vt4.i === idx(7, 5) && vt4.len === 4,
     '㉗ 4 手 VCT（冲四垫子 → 双活三 → 活四 → 五）应命中 H6（实际 ' + JSON.stringify(vt4) + '）');
+
+  /* ㉛ VCT 长度回归：黑 (5,5) 有 5 手强制胜 —— 四手上限的典型盲区
+     （来源：随机中盘普查 seed=174 ply=10；已用独立验证器确认该杀成立）。 */
+  b = makeBoard();
+  for (const [x, y, p] of [[7, 7, BLACK], [8, 6, BLACK], [6, 5, BLACK], [6, 8, BLACK], [6, 6, BLACK],
+                           [8, 7, WHITE], [9, 5, WHITE], [6, 3, WHITE], [4, 10, WHITE], [6, 7, WHITE]]) b[idx(x, y)] = p;
+  assert(vctRoot(b, BLACK, 4, now(), 300) === null,
+    '㉛ maxLen=4 抓不到该 5 手杀（旧设定的盲区）');
+  const vt5 = vctRoot(b, BLACK, 5, now(), 300);
+  assert(vt5 && vt5.len === 5 && vt5.i === idx(5, 5),
+    '㉛ maxLen>=5 应证明黑 (5,5) 的 5 手强制胜（实际 ' + JSON.stringify(vt5) + '）');
 
   console.log('SELFTEST PASS');
 }
