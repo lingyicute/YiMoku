@@ -10,9 +10,10 @@
     "url": "https://github.com/lingyicute/YiMoku.git"
   },
   "scripts": {
-    "test": "node tests/selftest.js && node tests/ai-regression.js && node tests/ai-audit.js && node tests/ai-search-integrity.js && node tests/smoke.js",
+    "test": "node tests/selftest.js && npm run test:ai && node tests/smoke.js",
     "test:selftest": "node tests/selftest.js",
-    "test:ai": "node tests/ai-regression.js && node tests/ai-audit.js && node tests/ai-search-integrity.js",
+    "test:ai": "node tests/ai-regression.js && node tests/ai-audit.js && node tests/ai-search-integrity.js && node tests/ai-threat-proof.js",
+    "test:threat": "node tests/ai-threat-proof.js",
     "test:audit": "node tests/ai-audit.js",
     "test:smoke": "node tests/smoke.js",
     "test:fuzz": "node tests/fuzz.js",
