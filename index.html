@@ -1770,9 +1770,10 @@ function vctRoot(b, atk, maxLen, t0, budget) {
 
 /* ---------- Alpha-Beta 搜索 ---------- */
 const K_BY_DEPTH = d => (d >= 3 ? 6 : 4);
-/* 深层（临近叶子）节点只用半径 1 的邻域出候选：树中绝大多数节点位于深层，
-   给它们整片半径 2 区域打分却只展开 4~6 个，绝大部分打分会被丢弃。 */
-const RADIUS_BY_DEPTH = d => (d >= 3 ? 2 : 1);
+/* 半径 1 会漏掉逼迫手：例如 H8 两格外的 K8/L8/M8 和 H10/H11/H12，
+   外端被堵时，H8 可造双跳四，却不与任何子相邻。浅层必须同样覆盖半径 2。
+   保留 17 格线邻域与原有 top-K 宽度；只扩大打分覆盖，不扩大每节点分支数。 */
+const RADIUS_BY_DEPTH = d => 2;
 const EXT_LIMIT = 8;                           // 单条线路上最多延伸的手数（防止爆炸）
 /* ⑲-c 杀手着法：在某层造成截断的着法，在兄弟子树里往往再次截断。
    与 HIST 的区别是它按「层数」记忆（同层=同类局面），HIST 按「格子」记忆。 */
@@ -2385,8 +2386,18 @@ const TT_EXACT = 0, TT_LOWER = 1, TT_UPPER = 2;
 const TT_MATE_TH = WIN_V / 8;
 const ZL = new Int32Array(N * N * 2), ZH = new Int32Array(N * N * 2);
 (function initZobrist() {
-  let s = 2463534242 >>> 0;                        // xorshift32，固定种子 → 跨运行可复现
-  const rnd = () => { s ^= s << 13; s >>>= 0; s ^= s >>> 17; s ^= s << 5; s >>>= 0; return s; };
+  /* 不能把线性 xorshift32 的相邻输出直接拼为 52-bit 键：
+     ZH = xorshift(ZL) & mask，在异或下仍保持该关系，全表实际只有 32 位秩。
+     使用带非线性乘法混合的 SplitMix32；固定种子仍可复现，棋子键的秩为 52。
+     这不是无碰撞哈希，但消除了原来确定的 32-bit 线性退化。 */
+  let s = 2463534242 >>> 0;
+  const rnd = () => {
+    s = (s + 0x9e3779b9) >>> 0;
+    let z = s;
+    z = Math.imul(z ^ (z >>> 16), 0x21f0aaad);
+    z = Math.imul(z ^ (z >>> 15), 0x735a2d97);
+    return (z ^ (z >>> 15)) >>> 0;
+  };
   for (let i = 0; i < N * N * 2; i++) { ZL[i] = rnd(); ZH[i] = rnd() & 0xFFFFF; }
 })();
 let TT_KEY = null, TT_VAL = null, TT_META = null, ttGen = 0;
@@ -2647,7 +2658,16 @@ function searchBest(b, ai, ordered, maxDepth, budget) {
         if (prevCost >= 2) grow = Math.min(2.6, Math.max(1.4, cost / prevCost));
         prevCost = cost;
       }
-      if (bestV >= WIN_V - d) break;       // WIN_V-ply 级的必然胜也可提前收敛
+      if (bestV >= WIN_V - d) {
+        /* 原来的 break 只跳出内层重试，仍会一直搜到 maxDepth。
+           但 top-K 搜索的高分不是全宽杀棋证明，不能无条件提前停。
+           只在根着确实成五，或留下双连五点且对手不能立即成五时收口。 */
+        b[best.i] = ai;
+        const proven = makesFive(b, best.x, best.y) ||
+          (fiveThreatCount(b, other(ai), 1) === 0 && fiveThreatCount(b, ai, 2) >= 2);
+        b[best.i] = EMPTY;
+        if (proven) break deep;
+      }
       /* PV 优先：把本轮最佳着法提到最前，下一轮先搜它；已被证伪为必败的候选沉底 */
       const pos = curIdx;
       if (pos > 0) { ordered.splice(pos, 1); ordered.unshift(cur); } curIdx = 0;
@@ -3792,16 +3812,17 @@ function selfTest() {
   b[idx(3, 7)] = b[idx(4, 7)] = b[idx(5, 7)] = BLACK;   // (2,7) 与 (6,7) 均为空
   assert(openThreeCount(b, BLACK, 8) === 0, 'O.XXX.O 两端之外被堵死，不能成活四，不计为活三');
 
-  /* ---- ⑦ PVS 窄窗搜索不改变根着法（固定深度 + 超大预算，确定性对拍黄金值）---- */
-  /* ㉑：叶评估改动后重标定 #5（d5 G6→L8；d6 起两版同为 H5，且 L8/G6 均无被反杀之虞） */
+  /* ---- 固定深度 + 超大预算的着法快照（不是这些着法最优的证明）---- */
+  /* 半径 2 覆盖修复后，d5 的 #5 L8→H7、#7 L7→F8；其余快照不变。
+     PVS 的正确性另由 tests/ai-search-integrity.js 在固定候选策略下与全窗搜索对拍。 */
   const goldens = [
     { seq: [[7,7],[8,8],[7,8]], d: 5, mv: 'H10' },
     { seq: [[7,7],[8,8],[7,8]], d: 6, mv: 'G10' },
     { seq: [[7,7],[8,7],[7,8],[6,7],[9,6],[8,8],[10,7],[6,8],[7,9],[9,8],[5,7],[11,8]], d: 5, mv: 'H7' },
     { seq: [[7,7],[8,7],[7,8],[6,7],[9,6],[8,8],[10,7],[6,8],[7,9],[9,8],[5,7],[11,8]], d: 6, mv: 'H7' },
-    { seq: [[3,3],[5,5],[7,7],[9,6],[11,9],[6,10],[12,13],[4,10],[6,4],[8,5],[9,8],[11,7]], d: 5, mv: 'L8' },
+    { seq: [[3,3],[5,5],[7,7],[9,6],[11,9],[6,10],[12,13],[4,10],[6,4],[8,5],[9,8],[11,7]], d: 5, mv: 'H7' },
     { seq: [[3,3],[5,5],[7,7],[9,6],[11,9],[6,10],[12,13],[4,10],[6,4],[8,5],[9,8],[11,7]], d: 6, mv: 'H5' },
-    { seq: [[7,7],[7,8],[8,7],[8,8],[6,7],[9,7],[7,6],[7,9],[5,5],[10,10],[6,6],[9,9]], d: 5, mv: 'L7' },
+    { seq: [[7,7],[7,8],[8,7],[8,8],[6,7],[9,7],[7,6],[7,9],[5,5],[10,10],[6,6],[9,9]], d: 5, mv: 'F8' },
     { seq: [[7,7],[7,8],[8,7],[8,8],[6,7],[9,7],[7,6],[7,9],[5,5],[10,10],[6,6],[9,9]], d: 6, mv: 'L7' },
   ];
   for (const g of goldens) {
