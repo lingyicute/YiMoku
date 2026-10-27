@@ -1,0 +1,41 @@
+name: tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  unit-and-regression:
+    name: Unit, regression, fuzz & DOM smoke
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - name: Install dev-only test tooling
+        run: npm ci
+      - name: Engine self-test + AI regressions + offline/worker/session contracts + DOM smoke
+        run: npm test
+      - name: Equivalence fuzzing & transposition-table consistency
+        run: npm run test:fuzz
+      - name: Verify the shipped HTML makes no external resource request
+        run: node tests/offline-contract.js
+
+  strength-and-latency:
+    name: AI strength & latency benchmark
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      # Zero-dependency: no npm install needed for bench.js.
+      - name: Self-play strength and per-move latency gates
+        run: npm run test:bench
