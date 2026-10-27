@@ -10,14 +10,17 @@
     "url": "https://github.com/lingyicute/YiMoku.git"
   },
   "scripts": {
-    "test": "node tests/selftest.js && npm run test:ai && node tests/smoke.js",
+    "test": "node tests/offline-contract.js && node tests/worker-contract.js && node tests/selftest.js && npm run test:ai && node tests/smoke.js && node tests/session.js",
     "test:selftest": "node tests/selftest.js",
     "test:ai": "node tests/ai-regression.js && node tests/ai-audit.js && node tests/ai-search-integrity.js && node tests/ai-threat-proof.js",
     "test:threat": "node tests/ai-threat-proof.js",
     "test:audit": "node tests/ai-audit.js",
     "test:smoke": "node tests/smoke.js",
     "test:fuzz": "node tests/fuzz.js",
-    "test:bench": "node tests/bench.js"
+    "test:bench": "node tests/bench.js",
+    "test:offline": "node tests/offline-contract.js",
+    "test:worker": "node tests/worker-contract.js",
+    "test:session": "node tests/session.js"
   },
   "devDependencies": {
     "jsdom": "^29.1.1"

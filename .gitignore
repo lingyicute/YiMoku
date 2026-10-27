@@ -1,1 +1,9 @@
 node_modules/
+# 由 scripts/subset_font.py 生成的临时字体子集，不纳入版本控制
+scripts/Nebulove-subset.woff2
+scripts/*.ttf
+.DS_Store
+
+# Python 编译缓存（字体生成脚本 import 时产生）
+__pycache__/
+*.pyc

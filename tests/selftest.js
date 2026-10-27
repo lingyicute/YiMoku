@@ -1,7 +1,8 @@
 #!/usr/bin/env node
-/* YiMoku — 内置自检运行器（零依赖，克隆后即可运行）
+/* YiMoku — 引擎自检运行器（零依赖，克隆后即可运行）
  *
- * 从 index.html 抽取内嵌主脚本并在 Node 中执行其自带的 selfTest()：
+ * 从 index.html 抽取内嵌主脚本，拼上开发专用的 tests/selftest-core.js 断言体，
+ * 再在 Node 作用域里执行 selfTest()：
  *   - 横/竖/斜五连判定与四连不判胜
  *   - 棋型评估（活四/死四/活三/跳四/FIVE）
  *   - 威胁计数去重、叶子终局判定（cond1/cond2）的符号与分值约定
@@ -16,18 +17,22 @@
 const fs = require('fs');
 const path = require('path');
 
-const htmlPath = path.join(__dirname, '..', 'index.html');
-const html = fs.readFileSync(htmlPath, 'utf-8');
+const root = path.join(__dirname, '..');
+const html = fs.readFileSync(path.join(root, 'index.html'), 'utf-8');
 const m = html.match(/<script id="main">([\s\S]*?)<\/script>/);
 if (!m) {
   console.error('FAIL: index.html 中未找到 <script id="main">');
   process.exit(1);
 }
+const core = fs.readFileSync(path.join(__dirname, 'selftest-core.js'), 'utf-8');
+if (!/function\s+selfTest\s*\(/.test(core)) {
+  console.error('FAIL: tests/selftest-core.js 中未找到 selfTest()');
+  process.exit(1);
+}
 
 try {
-  // document/window 不存在 → 脚本入口自动走 Node 分支执行 selfTest()
-  // selfTest 内部断言失败会自行 process.exit(1)
-  new Function(m[1])();
+  // 无 document/window：主脚本入口不会调用 init()，只由我们显式触发自检。
+  new Function(m[1] + '\n' + core + '\nselfTest();\n')();
   console.log('tests/selftest.js: PASS');
 } catch (e) {
   console.error('FAIL:', (e && e.stack) || e);
