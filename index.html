@@ -666,6 +666,7 @@ kbd{
 </div>
 
 <script id="main">
+/*ENGINE_START*/
 /* ============================================================
    YiMoku Web — 游戏逻辑（纯原生 JS，无任何依赖）
    ============================================================ */
@@ -2903,6 +2904,8 @@ function guardAgainstVcf(b, ai, pick, ordered, t0, budget) {
   return fallback || pick;                     // 优先未证伪候选，否则回退
 }
 
+/*ENGINE_END*/
+
 /* ============================================================
    应用层（浏览器）
    ============================================================ */
@@ -3278,14 +3281,27 @@ function endGame(winner, cells) {
   bar.classList.add('show');
   recordResult();
 }
+/* Worker 自举：主脚本用 ENGINE_START / ENGINE_END 两个标记圈出纯引擎段，
+   与 tests/worker-contract.js 共用同一份契约。标记缺失/错序、Worker 构造失败
+   或运行期脚本报错，一律退回主线程同步搜索（scheduleAI 已有该分支），
+   绝不留下一个永远不回消息的坏 Worker。 */
 function initAiWorker() {
-  if (typeof Worker === "undefined" || typeof Blob === "undefined") return;
+  if (typeof Worker === "undefined" || typeof Blob === "undefined" ||
+      typeof URL === "undefined" || typeof URL.createObjectURL !== "function") return;
+  let url = null, released = false;
+  const release = () => {
+    if (released || url === null) return;
+    released = true;
+    try { URL.revokeObjectURL(url); } catch (e) {}
+  };
   try {
     const mainScript = document.getElementById("main");
     if (!mainScript) return;
     const src = mainScript.textContent;
-    const cut = src.indexOf("/* ============================================================\n   应用层（浏览器）");
-    const engineCode = cut > 0 ? src.slice(0, cut) : src;
+    const start = src.indexOf("/*ENGINE_START*/");
+    const end = src.indexOf("/*ENGINE_END*/");
+    if (start < 0 || end <= start) return;          // 契约损坏：静默回退主线程
+    const engineCode = src.slice(start, end);
     const workerScript = engineCode + "\n" +
       "self.onmessage = function(e) {\n" +
       "  const d = e.data;\n" +
@@ -3295,17 +3311,29 @@ function initAiWorker() {
       "  }\n" +
       "};\n";
     const blob = new Blob([workerScript], { type: "text/javascript" });
-    const url = URL.createObjectURL(blob);
-    S.aiWorker = new Worker(url);
-    S.aiWorker.onmessage = function(e) {
+    url = URL.createObjectURL(blob);
+    const worker = new Worker(url);
+    worker.onmessage = function (e) {
+      release();                                   // Worker 已成功跑起来，Blob 可释放
       const data = e.data;
       if (!data || data.id !== S.aiReqId) return;
       if (S.over) { S.aiThinking = false; updateStatus(); return; }
       S.aiThinking = false;
       if (data.mv) doMove(data.mv.x, data.mv.y);
     };
+    worker.onerror = function () {
+      if (S.aiWorker !== worker) return;
+      try { worker.terminate(); } catch (e) {}
+      S.aiWorker = null;
+      release();
+      /* 在途请求不会收到回复：改由主线程重新排程，避免 aiThinking 永久卡死。 */
+      if (S.aiThinking && !S.over) scheduleAI();
+    };
+    S.aiWorker = worker;
   } catch (e) {
     S.aiWorker = null;
+  } finally {
+    if (!S.aiWorker) release();                     // 失败路径同样释放 Blob URL
   }
 }
 function cancelAI() {

@@ -2,7 +2,8 @@
 /* YiMoku — 离线契约检查（零依赖）
  * 保证交付的单个 HTML 文件：
  *   1. 没有任何会发起网络请求的 src/href（data: 与 # 锚点除外）；
- *   2. 主脚本不引用 fetch / XMLHttpRequest / importScripts / 外部字体 CDN。
+ *   2. 主脚本不引用 fetch / XMLHttpRequest / importScripts / 外部字体 CDN；
+ *   3. 引擎标记 ENGINE_START/ENGINE_END 存在且顺序正确（Worker 自举依赖它）。
  */
 'use strict';
 const fs = require('fs');
@@ -28,6 +29,9 @@ check(!!main, '缺少 <script id="main">');
 if (main) {
   check(!/\bfetch\s*\(|XMLHttpRequest|importScripts/.test(main[1]),
         '主脚本包含网络 API 调用');
+  const a = main[1].indexOf('/*ENGINE_START*/');
+  const b = main[1].indexOf('/*ENGINE_END*/');
+  check(a >= 0 && b > a, '引擎标记 ENGINE_START / ENGINE_END 缺失或顺序错误');
 }
 
 check(!/@import\s+url\(\s*["']?https?:/i.test(html), 'CSS 中存在远程 @import');
