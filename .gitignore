@@ -3,3 +3,7 @@ node_modules/
 scripts/Nebulove-subset.woff2
 scripts/*.ttf
 .DS_Store
+
+# Python 编译缓存（字体生成脚本 import 时产生）
+__pycache__/
+*.pyc
