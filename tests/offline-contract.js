@@ -4,7 +4,8 @@
  *   1. 没有任何会发起网络请求的 src/href（data: 与 # 锚点除外）；
  *   2. 主脚本不引用 fetch / XMLHttpRequest / importScripts / 外部字体 CDN；
  *   3. 引擎标记 ENGINE_START/ENGINE_END 存在且顺序正确（Worker 自举依赖它）；
- *   4. 产品文件不含开发专用自检代码（应位于 tests/selftest-core.js）。
+ *   4. 产品文件不含开发专用自检代码（应位于 tests/selftest-core.js）；
+ *   5. 存在内联 favicon，阻止 /favicon.ico 回退请求。
  */
 'use strict';
 const fs = require('fs');
@@ -36,6 +37,7 @@ if (main) {
 }
 
 check(!/function\s+selfTest\s*\(/.test(html), '产品 HTML 混入了开发专用自检代码');
+check(/<link\s+rel=["']icon["']/i.test(html), '缺少内联 favicon（浏览器会请求 /favicon.ico）');
 check(!/@import\s+url\(\s*["']?https?:/i.test(html), 'CSS 中存在远程 @import');
 check(!/url\(\s*["']?https?:/i.test(html), 'CSS 中存在远程 url() 资源');
 
