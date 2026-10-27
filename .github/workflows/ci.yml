@@ -21,7 +21,7 @@ jobs:
           cache: npm
       - name: Install dev-only test tooling
         run: npm ci
-      - name: Built-in engine self-test + AI regressions + jsdom smoke
+      - name: Engine self-test + AI regressions + offline/worker/session contracts + DOM smoke
         run: npm test
       - name: Equivalence fuzzing & transposition-table consistency
         run: npm run test:fuzz
