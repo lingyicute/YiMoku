@@ -3059,6 +3059,65 @@ function saveSettings() {
   store.set('mode', S.mode); store.set('diff', S.diff); store.set('side', String(S.side));
 }
 
+/* ---------- 断点续局 ----------
+   只保存「未结束」的对局；已结束的棋局已计入战绩，恢复会导致重复计分，
+   因此 endGame 走 saveSession() 时会被清空。
+   读档逐手校验：整数坐标、盘内、落点不重复、中途不得出现五连、
+   模式/难度/执子合法。任何一项异常即整档作废并回到空盘。 */
+function saveSession() {
+  if (!S.moves.length || S.over) { store.setJSON('session', null); return; }
+  store.setJSON('session', {
+    v: 1, mode: S.mode, diff: S.diff, side: S.side,
+    moves: S.moves.map(m => [m.x, m.y]), acc: Math.round(elapsedMs())
+  });
+}
+function restoreSession() {
+  const s = store.getJSON('session', null);
+  if (!s || s.v !== 1 || !Array.isArray(s.moves) || !s.moves.length) return false;
+  try {
+    if (s.mode !== 'ai' && s.mode !== 'pvp') return false;
+    if (!DIFF_NAME[s.diff] || (s.side !== BLACK && s.side !== WHITE)) return false;
+    if (s.moves.length >= N * N) return false;
+    const acc = Number(s.acc);
+    if (!Number.isFinite(acc) || acc < 0) return false;
+    const seen = new Uint8Array(N * N);
+    for (const m of s.moves) {
+      if (!Array.isArray(m) || !Number.isInteger(m[0]) || !Number.isInteger(m[1]) ||
+          !inB(m[0], m[1])) return false;
+      const i = idx(m[0], m[1]);
+      if (seen[i]) return false;                       // 重复落点
+      seen[i] = 1;
+    }
+    /* 用真实行棋顺序重放并校验胜负：未结束的对局不应含任何一手成五。 */
+    let board = makeBoard();
+    for (let k = 0; k < s.moves.length; k++) {
+      const [x, y] = s.moves[k], p = k % 2 === 0 ? BLACK : WHITE;
+      board[idx(x, y)] = p;
+      if (winLine(board, x, y)) return false;
+    }
+    /* 校验通过后再改动运行时状态，避免半途失败留下脏局面。 */
+    S.mode = s.mode; S.diff = s.diff; S.side = s.side;
+    saveSettings(); syncPills();
+    restartGame();                                    // 清空棋盘/计时/在途 AI 任务
+    cancelAI();                                       // 作废 restartGame 可能投出的开局任务
+    for (let k = 0; k < s.moves.length; k++) {
+      const [x, y] = s.moves[k], i = idx(x, y), p = k % 2 === 0 ? BLACK : WHITE;
+      S.board[i] = p;
+      S.moves.push({ i: i, p: p, x: x, y: y });
+      paintCell(i);
+    }
+    markLast(S.moves[S.moves.length - 1].i);
+    S.started = true; S.acc = acc; S.timerRun = false;
+    startTimer();
+    updateStats(); renderMoveList(); updateStatus(); syncBoardState();
+    saveSession();
+    if (!isHuman(turn())) scheduleAI();
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
+
 /* ---------- 计时 ---------- */
 function fmt(ms) {
   const s = Math.floor(ms / 1000);
@@ -3255,6 +3314,7 @@ function doMove(x, y) {
   }
 
   updateStats(); renderMoveList(); updateStatus();
+  saveSession();
   return true;
 }
 function endGame(winner, cells) {
@@ -3405,6 +3465,7 @@ function undo() {
   resultBar.classList.remove('show');
   if (wasOver && S.started) startTimer();            // 撤销后继续计时
   updateStats(); renderMoveList(); updateStatus();
+  saveSession();
 }
 function restartGame() {
   cancelAI();
@@ -3418,6 +3479,7 @@ function restartGame() {
   resultBar.classList.remove('show');
   timeVal.textContent = '00:00';
   updateStats(); renderMoveList(); updateStatus();
+  saveSession();
   if (S.mode === 'ai' && !isHuman(BLACK)) scheduleAI();   // AI 执黑则自动开局
 }
 
@@ -3529,7 +3591,7 @@ function init() {
   syncPills();
   renderRecords();
   initAiWorker();
-  restartGame();
+  if (!restoreSession()) restartGame();   // 读档成功时由 restoreSession 自行重建局面
 
   /* 主题 */
   $('themeBtn').addEventListener('click', () => {

@@ -9,7 +9,7 @@ Made with ❤️ by [lingyicute](https://github.com/lingyicute).
 [🇺🇸 English] • [🌐 Source Code](https://github.com/lingyicute/YiMoku) • [🐛 Report Bug](https://github.com/lingyicute/YiMoku/issues)
 
 [![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0-orange.svg)](https://github.com/lingyicute/YiMoku/blob/main/LICENSE)
-[![Single File ~217 KiB](https://img.shields.io/badge/Single%20File-~217%20KiB-blue)](https://github.com/lingyicute/YiMoku/blob/main/index.html)
+[![Single File ~219 KiB](https://img.shields.io/badge/Single%20File-~219%20KiB-blue)](https://github.com/lingyicute/YiMoku/blob/main/index.html)
 [![Zero Dependencies](https://img.shields.io/badge/Dependencies-Zero-brightgreen)](https://github.com/lingyicute/YiMoku)
 [![No Ads No Tracking](https://img.shields.io/badge/Ads%20%26%20Trackers-Zero-brightgreen)](https://github.com/lingyicute/YiMoku)
 [![GitHub Stars](https://img.shields.io/github/stars/lingyicute/YiMoku?style=flat&color=yellow)](https://github.com/lingyicute/YiMoku)
@@ -34,6 +34,9 @@ Browser gomoku is usually one of two things: a board buried under banner ads, or
   - A natural per-difficulty "thinking" pause keeps the opponent feeling human.
 - **👥 Two Ways to Play**
   - **人机对战 vs. AI** with selectable difficulty and side, or **双人对战 local PvP** — pass-and-play on one screen, black vs. white.
+- **💾 Resume an Unfinished Game**
+  - The current board, move list, clock, mode, difficulty and side are saved to `localStorage` after every move and restored on reload.
+  - Saves are validated move by move (integer coordinates, on-board, no duplicate points, no finished game); a corrupt save is discarded instead of breaking the page.
 - **📜 Move List & Records**
   - A running game record with **board coordinates** (`A–O` × `1–15`, letter `I` skipped, Go-style).
   - **Records per mode**: AI wins / losses / draws with win rate, PvP results by colour, and your **fastest win** (fewest moves, with time and difficulty); one click — with a confirm — wipes the slate clean.
@@ -127,8 +130,9 @@ The shipped artifact stays exactly as it is — one zero-dependency HTML file. E
 ```
 npm install          # dev dependencies (jsdom only)
 npm test             # offline/worker contract + engine self-test + AI regressions + DOM smoke  (~15 s)
-npm run test:fuzz    # equivalence fuzzing & TT consistency                       (~10 s)
-npm run test:bench   # AI strength & latency benchmark                            (~1–2 min)
+npm run test:fuzz     # equivalence fuzzing & TT consistency                      (~10 s)
+npm run test:session  # localStorage resume / corrupt-save regressions            (~3 s)
+npm run test:bench    # AI strength & latency benchmark                           (~1–2 min)
 ```
 
 `npm test` also runs in GitHub Actions on every push and pull request, together with `test:fuzz` and `test:bench` in separate jobs.
@@ -137,6 +141,7 @@ npm run test:bench   # AI strength & latency benchmark                          
 - **`tests/offline-contract.js`** — *zero-dependency*. Static guard that the shipped HTML has no external `src`/`href`, no `fetch`/XHR, no remote CSS/`@import`, no dev-only self-test code, and that the Worker engine markers are present.
 - **`tests/worker-contract.js`** — *zero-dependency*. Evaluates the `ENGINE_START`/`ENGINE_END` slice in a scope with no `document`/`window`, then simulates a real `chooseMove` message round-trip — this is what makes the self-bootstrapping Worker safe to refactor.
 - **`tests/smoke.js`** — *needs `npm install`*. Boots the real page inside jsdom and drives it end to end: the first-run help dialog, stone placement, AI replies, undo pairs, mode / difficulty / side switching, theme & palette popovers, record clearing, keyboard play, win highlighting and all three result-bar texts. Without jsdom it prints a skip notice instead of failing, so a bare clone still passes `npm test`.
+- **`tests/session.js`** — *needs `npm install`*. Boots the real page in jsdom to verify automatic save/restore of the board, move list, clock and settings, plus rejection of ten kinds of malformed saves.
 - **`tests/bench.js`** — *zero-dependency, slow on purpose*. Plays real AI-vs-AI matches and fails on regression: Expert must beat Easy ≥ 5/6 and Medium ≥ 3/4, and per-move latency must stay inside the engine budgets (550 ms hard / 900 ms expert) plus machine slack. Run it whenever the engine changes.
 
 ## 🤗 Contributing
