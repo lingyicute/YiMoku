@@ -27,20 +27,15 @@ def strip_non_render_text(html):
     """剔除所有用户不可见的字符：
     1. HTML 注释 <!-- ... -->
     2. <style> 样式标签全部内容
-    3. <script> 中仅供 Node 测试的 selfTest() 及其后全量代码
-    4. <script> 中的块注释 /* ... */
-    5. <script> 中的行注释 // ...（包含单独成行及代码尾部行注释）
+    3. <script> 中的块注释与行注释（含单独成行及代码尾部行注释）
     """
     html = re.sub(r'<!--.*?-->', '', html, flags=re.S)
     html = re.sub(r'<style\b[^>]*>.*?</style>', '', html, flags=re.S | re.I)
 
     def _js(m):
         code = m.group(1)
-        # 截断仅在命令行自检时运行的代码（自检断言中的汉字对浏览器用户完全不可见）
-        idx_test = code.find('function selfTest()')
-        if idx_test != -1:
-            code = code[:idx_test]
-        # 剔除块注释 /* ... */
+        # 自检断言体已移至 tests/selftest-core.js，产品页面不再含 Node-only 文本
+        # 剔除块注释
         code = re.sub(r'/\*.*?\*/', ' ', code, flags=re.S)
         # 剔除行尾及整行注释 // ...
         code = re.sub(r'//.*$', ' ', code, flags=re.M)
