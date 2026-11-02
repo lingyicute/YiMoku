@@ -3672,6 +3672,10 @@ function init() {
   /* 计时刷新 */
   setInterval(() => { if (S.timerRun) updateTime(); }, 250);
 
+  /* 页面离开/转入后台时补写一次存档：否则 acc 只停在最后一手，刷新会丢掉思考用时 */
+  window.addEventListener('pagehide', saveSession);
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') saveSession(); });
+
   /* 首次访问展示玩法 */
   updateSoundUI();
   if (store.get('seenHelp', '0') !== '1') openModal('modalHelp');
