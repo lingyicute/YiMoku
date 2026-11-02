@@ -63,6 +63,9 @@ const click = el => el.dispatchEvent(new window.MouseEvent('click', { bubbles: t
   let stones = [...document.querySelectorAll('.cell')].filter(c => c.classList.contains('on'));
   assert(stones.length === 1, '点击后落下 1 子（人执黑）');
   assert($('moveVal').textContent === '1', '手数 = 1');
+  const h8 = document.querySelector('.cell[data-x="7"][data-y="7"]');
+  assert(h8.getAttribute('aria-label') === 'H8，黑棋', '落子后格子标签含棋色（实际：' + h8.getAttribute('aria-label') + '）');
+  assert(document.querySelector('.cell[data-x="0"][data-y="0"]').getAttribute('aria-label') === 'A1', '空格标签仅含坐标');
   await sleep(700);
   stones = [...document.querySelectorAll('.cell')].filter(c => c.classList.contains('on'));
   assert(stones.length === 2, 'AI 已应手（共 2 子）');
@@ -77,6 +80,7 @@ const click = el => el.dispatchEvent(new window.MouseEvent('click', { bubbles: t
   click($('undoBtn'));
   stones = [...document.querySelectorAll('.cell')].filter(c => c.classList.contains('on'));
   assert(stones.length === 0, '撤销后回到空盘（撤回双方各一手）');
+  assert(h8.getAttribute('aria-label') === 'H8', '撤销后标签恢复为纯坐标');
   assert($('undoBtn').disabled, '无可撤销时按钮禁用');
 
   /* ---- 双人模式 ---- */
