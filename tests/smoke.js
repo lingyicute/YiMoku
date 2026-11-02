@@ -50,6 +50,14 @@ const click = el => el.dispatchEvent(new window.MouseEvent('click', { bubbles: t
   assert(!$('modalHelp').classList.contains('open'), '点击「知道了」关闭说明');
   assert(window.localStorage.getItem('yimoku:seenHelp') === '1', '已记录看过说明');
 
+  /* ---- 关闭态的弹层/模态不可被键盘聚焦（visibility:hidden）---- */
+  const vis = id => window.getComputedStyle($(id)).visibility;
+  ['palettePop', 'menuPop', 'modalHelp', 'modalRecords', 'modalClear'].forEach(id =>
+    assert(vis(id) === 'hidden', id + ' 关闭时应为 visibility:hidden（实际：' + vis(id) + '）'));
+  click($('menuBtn'));
+  assert(vis('menuPop') === 'visible', '菜单打开时可见');
+  click($('menuBtn'));
+
   /* ---- 落子 + AI 应手 ---- */
   click(document.querySelector('.cell[data-x="7"][data-y="7"]'));
   let stones = [...document.querySelectorAll('.cell')].filter(c => c.classList.contains('on'));
