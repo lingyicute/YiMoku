@@ -143,6 +143,8 @@ const click = el => el.dispatchEvent(new window.MouseEvent('click', { bubbles: t
   assert($('resultText').textContent.includes('黑棋获胜'), '双人文案：黑棋获胜');
   assert(document.querySelectorAll('.cell.win').length === 5, '高亮 5 连');
   assert(parseInt($('recTotal').textContent) === 1, '清除后新记录 +1');
+  assert($('statusStone').classList.contains('on1') && !$('statusStone').classList.contains('on2'),
+    '黑棋获胜时状态卡显示黑子');
 
   /* ---- 结果条文案（三种） ---- */
   window.eval("restartGame(); S.mode='ai'; S.side=1; S.moves.length=3; endGame(1,null);");

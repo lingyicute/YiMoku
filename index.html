@@ -3199,7 +3199,9 @@ function syncBoardState() {
 /* ---------- 状态卡 ---------- */
 function updateStatus() {
   const t = turn();
-  statusStone.className = 'mini ' + (t === BLACK ? 'on1' : 'on2');
+  /* 终局后 turn() 已换到对手：状态卡的棋子要显示获胜方，而非下一手的执子方。 */
+  const shown = S.over && S.winner ? S.winner : t;
+  statusStone.className = 'mini ' + (shown === BLACK ? 'on1' : 'on2');
   if (S.over) {
     statusStone.style.visibility = 'hidden';
     if (S.winner === 0) { statusText.textContent = '和棋'; statusSub.textContent = '棋盘已满，双方平分秋色'; }
