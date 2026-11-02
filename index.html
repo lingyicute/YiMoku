@@ -466,7 +466,9 @@ kbd{
   .brand .name{font-size:19px}
 }
 @media (prefers-reduced-motion:reduce){
-  *,*::before,*::after{animation-duration:.01ms !important; transition-duration:.01ms !important}
+  /* 仅压缩时长会让 infinite 动画以 0.01ms 周期狂闪：必须同时只播一轮 */
+  *,*::before,*::after{animation-duration:.01ms !important; animation-iteration-count:1 !important; transition-duration:.01ms !important}
+  .tdot{animation:none; opacity:1}
 }
 </style>
 </head>
