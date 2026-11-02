@@ -3217,10 +3217,9 @@ function updateStatus() {
   const shown = S.over && S.winner ? S.winner : t;
   statusStone.className = 'mini ' + (shown === BLACK ? 'on1' : 'on2');
   if (S.over) {
-    statusStone.style.visibility = 'hidden';
+    statusStone.style.visibility = S.winner === 0 ? 'hidden' : 'visible';
     if (S.winner === 0) { statusText.textContent = '和棋'; statusSub.textContent = '棋盘已满，双方平分秋色'; }
     else {
-      statusStone.style.visibility = 'visible';
       statusText.textContent = playerName(S.winner) + '获胜';
       statusSub.textContent = '第 ' + S.moves.length + ' 手 · 用时 ' + fmt(elapsedMs());
     }
@@ -3523,11 +3522,22 @@ function setPopOpen(pop, on) {
   const btn = $(POP_BTN[pop.id]);
   if (btn) btn.setAttribute('aria-expanded', on ? 'true' : 'false');
 }
-function closePop() { if (openPop) { setPopOpen(openPop, false); openPop = null; } }
-function togglePop(pop, btn) {
+/* 关闭弹层时若焦点还在里面（或 force），归还给触发按钮——否则弹层 visibility:hidden 后焦点会丢到 body。 */
+function closePop(force) {
+  if (!openPop) return;
+  const pop = openPop, btn = $(POP_BTN[pop.id]);
+  const restore = force === true || pop.contains(document.activeElement);
+  setPopOpen(pop, false); openPop = null;
+  if (restore && btn) btn.focus();
+}
+function togglePop(pop) {
   const isOpen = pop.classList.contains('open');
   closePop();
-  if (!isOpen) { setPopOpen(pop, true); openPop = pop; }
+  if (!isOpen) {
+    setPopOpen(pop, true); openPop = pop;
+    const first = pop.querySelector('button:not([disabled])');
+    if (first) first.focus();
+  }
 }
 /* 焦点管理：打开时把焦点移进对话框，关闭时还给打开前的元素（来自弹层菜单项的，
    还给弹层的触发按钮——菜单项随弹层 visibility:hidden，已无法聚焦）。 */
@@ -3557,8 +3567,7 @@ function closeModal(id) {
 function anyModalOpen() { return !!document.querySelector('.modal.open'); }
 function closeAllModals() { document.querySelectorAll('.modal.open').forEach(m => closeModal(m.id)); }
 /* Tab 在对话框内循环，不漏到背后的棋盘 */
-function trapTab(e) {
-  const m = document.querySelector('.modal.open');
+function trapTab(e, m = document.querySelector('.modal.open')) {
   const f = m ? [...m.querySelectorAll('button:not([disabled])')] : [];
   if (!f.length) { e.preventDefault(); return; }
   const a = document.activeElement;
@@ -3610,12 +3619,10 @@ function onKey(e) {
     return;
   }
   if (e.key === 'Escape') {
-    /* 弹层关闭后里面的按钮会 visibility:hidden，焦点若不归还就丢到 body 上 */
-    const btn = openPop && $(POP_BTN[openPop.id]);
-    closePop();
-    if (btn) btn.focus();
+    closePop(true);
     return;
   }
+  if (e.key === 'Tab' && openPop) { trapTab(e, openPop); return; }
   if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') { e.preventDefault(); undo(); return; }
   if (e.ctrlKey || e.metaKey || e.altKey) return;
   const k = e.key.toLowerCase();
@@ -3673,7 +3680,7 @@ function init() {
   $('menuBtn').addEventListener('click', e => { e.stopPropagation(); togglePop($('menuPop')); });
   $('palettePop').addEventListener('click', e => e.stopPropagation());
   $('menuPop').addEventListener('click', e => e.stopPropagation());
-  document.addEventListener('click', closePop);
+  document.addEventListener('click', () => closePop());
 
   /* 棋谱点击高亮 */
   mList.addEventListener('click', e => {
