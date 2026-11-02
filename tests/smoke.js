@@ -80,6 +80,11 @@ const click = el => el.dispatchEvent(new window.MouseEvent('click', { bubbles: t
   assert(document.querySelectorAll('.cell.on').length === 2, '双人交替落子');
   click($('undoBtn'));
   assert(document.querySelectorAll('.cell.on').length === 1, '双人撤销一手');
+  click($('undoBtn'));
+  assert(document.querySelectorAll('.cell.on').length === 0, '双人撤销到空盘');
+  assert(window.eval('S.started === false && S.timerRun === false && S.acc === 0'),
+    '撤销到空盘后计时清零并停表');
+  assert($('statusSub').textContent.includes('点击棋盘开始'), '撤销到空盘后恢复开局提示');
 
   /* ---- 人机模式 + 执白 ---- */
   click(document.querySelector('[data-mode="ai"]'));
