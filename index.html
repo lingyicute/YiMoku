@@ -3529,10 +3529,43 @@ function togglePop(pop, btn) {
   closePop();
   if (!isOpen) { setPopOpen(pop, true); openPop = pop; }
 }
-function openModal(id) { closePop(); $(id).classList.add('open'); if (id === 'modalHelp') store.set('seenHelp', '1'); }
-function closeModal(id) { $(id).classList.remove('open'); }
+/* 焦点管理：打开时把焦点移进对话框，关闭时还给打开前的元素（来自弹层菜单项的，
+   还给弹层的触发按钮——菜单项随弹层 visibility:hidden，已无法聚焦）。 */
+let modalReturn = null;
+function openModal(id) {
+  const m = $(id);
+  if (!anyModalOpen()) {
+    let ret = document.activeElement;
+    const pop = ret && ret.closest ? ret.closest('.popover') : null;
+    if (pop) ret = $(POP_BTN[pop.id]);
+    modalReturn = ret && ret !== document.body ? ret : null;
+  }
+  closePop();
+  m.classList.add('open');
+  if (id === 'modalHelp') store.set('seenHelp', '1');
+  /* 清除记录是破坏性操作：默认焦点放在「取消」上，避免回车误触 */
+  const first = id === 'modalClear' ? $('clearCancel') : m.querySelector('.btn.primary');
+  if (first) first.focus();
+}
+function closeModal(id) {
+  $(id).classList.remove('open');
+  if (!anyModalOpen() && modalReturn) {
+    const el = modalReturn; modalReturn = null;
+    if (document.contains(el)) el.focus();
+  }
+}
 function anyModalOpen() { return !!document.querySelector('.modal.open'); }
-function closeAllModals() { document.querySelectorAll('.modal.open').forEach(m => m.classList.remove('open')); }
+function closeAllModals() { document.querySelectorAll('.modal.open').forEach(m => closeModal(m.id)); }
+/* Tab 在对话框内循环，不漏到背后的棋盘 */
+function trapTab(e) {
+  const m = document.querySelector('.modal.open');
+  const f = m ? [...m.querySelectorAll('button:not([disabled])')] : [];
+  if (!f.length) { e.preventDefault(); return; }
+  const a = document.activeElement;
+  if (!m.contains(a)) { e.preventDefault(); f[0].focus(); }
+  else if (e.shiftKey && a === f[0]) { e.preventDefault(); f[f.length - 1].focus(); }
+  else if (!e.shiftKey && a === f[f.length - 1]) { e.preventDefault(); f[0].focus(); }
+}
 
 /* ---------- 配色面板 ---------- */
 const ACCENTS = ['purple', 'blue', 'teal', 'green', 'yellow', 'orange', 'pink', 'red'];
@@ -3572,7 +3605,8 @@ function syncSwatches() {
 /* ---------- 键盘 ---------- */
 function onKey(e) {
   if (anyModalOpen()) {
-    if (e.key === 'Escape') { closeAllModals(); }
+    if (e.key === 'Escape') closeAllModals();
+    else if (e.key === 'Tab') trapTab(e);
     return;
   }
   if (e.key === 'Escape') {
