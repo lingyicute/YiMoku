@@ -3465,7 +3465,8 @@ function undo() {
   }
   S.over = false; S.winner = 0;
   resultBar.classList.remove('show');
-  if (wasOver && S.started) startTimer();            // 撤销后继续计时
+  if (!S.moves.length) { stopTimer(); S.acc = 0; S.started = false; }   // 回到空盘：与新局一致，下一手才开始计时
+  else if (wasOver && S.started) startTimer();       // 撤销后继续计时
   updateStats(); renderMoveList(); updateStatus();
   saveSession();
 }
