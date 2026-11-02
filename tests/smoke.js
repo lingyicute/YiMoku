@@ -54,9 +54,18 @@ const click = el => el.dispatchEvent(new window.MouseEvent('click', { bubbles: t
   const vis = id => window.getComputedStyle($(id)).visibility;
   ['palettePop', 'menuPop', 'modalHelp', 'modalRecords', 'modalClear'].forEach(id =>
     assert(vis(id) === 'hidden', id + ' 关闭时应为 visibility:hidden（实际：' + vis(id) + '）'));
+  assert($('menuBtn').getAttribute('aria-expanded') === 'false', '菜单关闭时 aria-expanded=false');
   click($('menuBtn'));
   assert(vis('menuPop') === 'visible', '菜单打开时可见');
-  click($('menuBtn'));
+  assert($('menuBtn').getAttribute('aria-expanded') === 'true', '菜单打开时 aria-expanded=true');
+  document.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+  assert(!$('menuPop').classList.contains('open'), 'Esc 关闭菜单');
+  assert($('menuBtn').getAttribute('aria-expanded') === 'false', '菜单关闭后 aria-expanded 复位');
+  assert(document.activeElement === $('menuBtn'), 'Esc 关闭弹层后焦点回到触发按钮');
+  /* 药丸选中态要暴露给读屏 */
+  const pressed = sel => [...document.querySelectorAll(sel)].filter(b => b.getAttribute('aria-pressed') === 'true').length;
+  assert(pressed('[data-mode]') === 1 && pressed('[data-diff]') === 1 && pressed('[data-side]') === 1,
+    '每组药丸恰有一个 aria-pressed=true');
 
   /* ---- 落子 + AI 应手 ---- */
   click(document.querySelector('.cell[data-x="7"][data-y="7"]'));

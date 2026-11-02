@@ -497,10 +497,10 @@ kbd{
           <path d="M12 2.6v2.4M12 19v2.4M2.6 12H5M19 12h2.4M5.2 5.2l1.7 1.7M17.1 17.1l1.7 1.7M5.2 18.8l1.7-1.7M17.1 6.9l1.7-1.7"/>
         </svg>
       </button>
-      <button class="iconbtn" id="paletteBtn" title="选择配色" aria-label="选择配色" aria-haspopup="true">
+      <button class="iconbtn" id="paletteBtn" title="选择配色" aria-label="选择配色" aria-haspopup="true" aria-expanded="false">
         <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 3a9 9 0 000 18 1.5 1.5 0 001.11-2.51 1.5 1.5 0 011.12-2.49H16a5 5 0 005-5c0-4.42-4.03-8-9-8zm-5.5 9a1.5 1.5 0 110-3 1.5 1.5 0 010 3zm3-4a1.5 1.5 0 110-3 1.5 1.5 0 010 3zm5 0a1.5 1.5 0 110-3 1.5 1.5 0 010 3zm3 4a1.5 1.5 0 110-3 1.5 1.5 0 010 3z"/></svg>
       </button>
-      <button class="iconbtn" id="menuBtn" title="菜单" aria-label="菜单" aria-haspopup="true">
+      <button class="iconbtn" id="menuBtn" title="菜单" aria-label="菜单" aria-haspopup="true" aria-expanded="false">
         <svg viewBox="0 0 24 24" fill="currentColor"><rect x="3.5" y="5" width="17" height="2.4" rx="1.2"/><rect x="3.5" y="10.8" width="17" height="2.4" rx="1.2"/><rect x="3.5" y="16.6" width="17" height="2.4" rx="1.2"/></svg>
       </button>
 
@@ -558,7 +558,7 @@ kbd{
       <div class="board-frame">
         <div class="colheads" id="colHeads" aria-hidden="true"></div>
         <div class="rowheads" id="rowHeads" aria-hidden="true"></div>
-        <div class="board t1" id="board" aria-label="五子棋棋盘">
+        <div class="board t1" id="board" role="group" aria-label="五子棋棋盘">
           <!-- 225 格由 JS 生成 -->
         </div>
       </div>
@@ -3502,9 +3502,11 @@ function restartGame() {
 
 /* ---------- 设置切换 ---------- */
 function syncPills() {
-  document.querySelectorAll('[data-mode]').forEach(b => b.classList.toggle('on', b.dataset.mode === S.mode));
-  document.querySelectorAll('[data-diff]').forEach(b => b.classList.toggle('on', b.dataset.diff === S.diff));
-  document.querySelectorAll('[data-side]').forEach(b => b.classList.toggle('on', +b.dataset.side === S.side));
+  /* 选中态不能只靠对勾图标：同步 aria-pressed，读屏才知道当前选了哪个 */
+  const mark = (b, on) => { b.classList.toggle('on', on); b.setAttribute('aria-pressed', on ? 'true' : 'false'); };
+  document.querySelectorAll('[data-mode]').forEach(b => mark(b, b.dataset.mode === S.mode));
+  document.querySelectorAll('[data-diff]').forEach(b => mark(b, b.dataset.diff === S.diff));
+  document.querySelectorAll('[data-side]').forEach(b => mark(b, +b.dataset.side === S.side));
   $('diffRow').hidden = S.mode !== 'ai';
   $('sideRow').hidden = S.mode !== 'ai';
   titleSub.textContent = S.mode === 'pvp' ? '双人同屏' : ('人机对战 · ' + DIFF_NAME[S.diff]);
@@ -3515,11 +3517,17 @@ function setSide(s) { if (S.side === s) return; S.side = s; saveSettings(); sync
 
 /* ---------- 弹层 / 模态 ---------- */
 let openPop = null;
-function closePop() { if (openPop) { openPop.classList.remove('open'); openPop = null; } }
+const POP_BTN = { palettePop: 'paletteBtn', menuPop: 'menuBtn' };   // 弹层 → 触发按钮
+function setPopOpen(pop, on) {
+  pop.classList.toggle('open', on);
+  const btn = $(POP_BTN[pop.id]);
+  if (btn) btn.setAttribute('aria-expanded', on ? 'true' : 'false');
+}
+function closePop() { if (openPop) { setPopOpen(openPop, false); openPop = null; } }
 function togglePop(pop, btn) {
   const isOpen = pop.classList.contains('open');
   closePop();
-  if (!isOpen) { pop.classList.add('open'); openPop = pop; }
+  if (!isOpen) { setPopOpen(pop, true); openPop = pop; }
 }
 function openModal(id) { closePop(); $(id).classList.add('open'); if (id === 'modalHelp') store.set('seenHelp', '1'); }
 function closeModal(id) { $(id).classList.remove('open'); }
@@ -3554,7 +3562,11 @@ function swatchColor(a) {
 }
 function syncSwatches() {
   const cur = document.documentElement.dataset.accent || 'purple';
-  document.querySelectorAll('.swatch').forEach(b => b.classList.toggle('on', b.dataset.accent === cur));
+  document.querySelectorAll('.swatch').forEach(b => {
+    const on = b.dataset.accent === cur;
+    b.classList.toggle('on', on);
+    b.setAttribute('aria-pressed', on ? 'true' : 'false');
+  });
 }
 
 /* ---------- 键盘 ---------- */
@@ -3563,7 +3575,13 @@ function onKey(e) {
     if (e.key === 'Escape') { closeAllModals(); }
     return;
   }
-  if (e.key === 'Escape') { closePop(); return; }
+  if (e.key === 'Escape') {
+    /* 弹层关闭后里面的按钮会 visibility:hidden，焦点若不归还就丢到 body 上 */
+    const btn = openPop && $(POP_BTN[openPop.id]);
+    closePop();
+    if (btn) btn.focus();
+    return;
+  }
   if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') { e.preventDefault(); undo(); return; }
   if (e.ctrlKey || e.metaKey || e.altKey) return;
   const k = e.key.toLowerCase();
