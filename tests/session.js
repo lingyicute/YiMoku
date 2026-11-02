@@ -22,7 +22,7 @@ const ok = (name, cond, extra) => {
 };
 const KEY = 'yimoku:session';
 
-function boot(session) {
+function boot(session, prefs) {
   const errors = [];
   const vc = new VirtualConsole();
   vc.on('jsdomError', e => errors.push(e.message));
@@ -32,6 +32,7 @@ function boot(session) {
     beforeParse(w) {
       w.localStorage.setItem('yimoku:seenHelp', '1');   // 跳过首次玩法弹窗
       if (session !== undefined) w.localStorage.setItem(KEY, JSON.stringify(session));
+      for (const k in (prefs || {})) w.localStorage.setItem('yimoku:' + k, prefs[k]);
     }
   });
   return { w: dom.window, d: dom.window.document, errors, close: () => dom.window.close() };
@@ -89,6 +90,28 @@ const clickCell = (w, d, x, y) => {
   w.dispatchEvent(new w.Event('pagehide'));
   const saved = JSON.parse(w.localStorage.getItem(KEY));
   ok('pagehide 补写计时', saved && saved.acc >= 70000, JSON.stringify(saved));
+  close();
+}
+
+/* 2c) 损坏的战绩 / 配色偏好不得渗入界面（NaN、负数、非法配色） */
+{
+  const { w, d, errors, close } = boot(undefined, {
+    records: JSON.stringify({ total: -3, ai: { win: 'x', lose: 2.9, draw: null }, pvp: { b: 1e999, w: 1, draw: 0 },
+      best: { moves: 12, ms: 'oops', diff: 'godlike' } }),
+    accent: 'not-a-colour',
+  });
+  const text = ['rAI', 'rPVP', 'rBest', 'recTotal', 'recAI', 'recPVP', 'recBest']
+    .map(id => d.getElementById(id).textContent).join('|');
+  ok('损坏战绩：无脚本异常', errors.length === 0, errors.join(' | '));
+  ok('损坏战绩：界面无 NaN/Infinity', !/NaN|Infinity|undefined/.test(text));
+  ok('损坏战绩：负数/非数字归零', d.getElementById('recTotal').textContent === '0 局',
+    d.getElementById('recTotal').textContent);
+  ok('损坏战绩：小数向下取整', d.getElementById('recAI').textContent === '0 胜 2 负 0 和',
+    d.getElementById('recAI').textContent);
+  ok('损坏战绩：最快取胜时长回落为 00:00', /12 手 · 00:00（人机）/.test(d.getElementById('recBest').textContent),
+    d.getElementById('recBest').textContent);
+  ok('非法配色回落为紫罗兰', d.documentElement.dataset.accent === 'purple', d.documentElement.dataset.accent);
+  ok('非法配色：色块选中状态正常', d.querySelectorAll('.swatch.on').length === 1);
   close();
 }
 
