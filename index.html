@@ -3172,6 +3172,8 @@ function paintCell(i) {
   el.classList.toggle('on', v !== EMPTY);
   el.classList.toggle('on1', v === BLACK);
   el.classList.toggle('on2', v === WHITE);
+  /* 读屏用户看不到棋子：把落子状态写进标签，而不只是坐标 */
+  el.setAttribute('aria-label', coord(i % N, (i / N) | 0) + (v === BLACK ? '，黑棋' : v === WHITE ? '，白棋' : ''));
 }
 function markLast(i) {
   if (S.prevLast >= 0) cellsEl[S.prevLast].classList.remove('last');
