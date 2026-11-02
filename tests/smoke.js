@@ -67,6 +67,20 @@ const click = el => el.dispatchEvent(new window.MouseEvent('click', { bubbles: t
   assert(pressed('[data-mode]') === 1 && pressed('[data-diff]') === 1 && pressed('[data-side]') === 1,
     '每组药丸恰有一个 aria-pressed=true');
 
+  /* ---- 模态框焦点管理：移入、Tab 循环、Esc 后归还 ---- */
+  const key = (k, extra) => document.dispatchEvent(new window.KeyboardEvent('keydown', Object.assign({ key: k, bubbles: true, cancelable: true }, extra)));
+  $('menuBtn').focus(); click($('menuBtn'));
+  $('mClear').focus(); click($('mClear'));
+  assert($('modalClear').classList.contains('open'), '菜单「清除记录」打开确认框');
+  assert(document.activeElement === $('clearCancel'), '确认框打开后焦点落在「取消」（实际：' + (document.activeElement && document.activeElement.id) + '）');
+  $('clearConfirm').focus(); key('Tab');
+  assert(document.activeElement === $('clearCancel'), '末个按钮按 Tab 回到首个');
+  key('Tab', { shiftKey: true });
+  assert(document.activeElement === $('clearConfirm'), '首个按钮按 Shift+Tab 回到末个');
+  key('Escape');
+  assert(!$('modalClear').classList.contains('open'), 'Esc 关闭确认框');
+  assert(document.activeElement === $('menuBtn'), '确认框关闭后焦点回到菜单按钮（实际：' + (document.activeElement && document.activeElement.id) + '）');
+
   /* ---- 落子 + AI 应手 ---- */
   click(document.querySelector('.cell[data-x="7"][data-y="7"]'));
   let stones = [...document.querySelectorAll('.cell')].filter(c => c.classList.contains('on'));
