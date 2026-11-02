@@ -80,6 +80,18 @@ const clickCell = (w, d, x, y) => {
   close();
 }
 
+/* 2b) 离开页面时补写计时：最后一手之后的思考用时不能丢 */
+{
+  const { w, close } = boot({
+    v: 1, mode: 'pvp', diff: 'easy', side: 1, moves: [[7, 7], [8, 8]], acc: 65000
+  });
+  w.eval('S.t0 -= 5000');                            // 模拟又过了 5 秒
+  w.dispatchEvent(new w.Event('pagehide'));
+  const saved = JSON.parse(w.localStorage.getItem(KEY));
+  ok('pagehide 补写计时', saved && saved.acc >= 70000, JSON.stringify(saved));
+  close();
+}
+
 /* 3) 畸形存档必须被拒绝，且页面仍停在空盘 */
 const bad = [
   ['版本号不符', { v: 2, mode: 'pvp', diff: 'easy', side: 1, moves: [[7, 7]], acc: 0 }],
