@@ -3162,7 +3162,12 @@ function buildBoard() {
     c.setAttribute('aria-label', coord(x, y));
     c.innerHTML = '<i class="s"></i>';
     c.addEventListener('focus', () => {
-      S.cursor.x = x; S.cursor.y = y; S.cursorVisible = true;
+      S.cursor.x = x; S.cursor.y = y;
+      /* 只有键盘带来的焦点才唤出光标框：鼠标/触屏点击后不该在刚落的子上留一圈
+         （与 .cell:focus-visible 的取舍一致）。旧浏览器不识别该选择器会抛错，按原行为处理 */
+      let viaKeyboard = true;
+      try { viaKeyboard = c.matches(':focus-visible'); } catch (e) {}
+      if (viaKeyboard) S.cursorVisible = true;
       syncBoardState();
     });
     frag.appendChild(c);
