@@ -304,7 +304,7 @@ header{
 .board.human .cell:not(.on1):not(.on2):hover .s{
   background:var(--pv); opacity:.45; transform:scale(1);
 }
-.board.showcur .cell.cursor .s{background:var(--pv); opacity:.6; transform:scale(1)}
+.board.showcur .cell.cursor:not(.on) .s{background:var(--pv); opacity:.6; transform:scale(1)}
 .board.showcur .cell.cursor{outline:2.5px solid var(--accent); outline-offset:-1px}
 .board.over .cell{cursor:default}
 
