@@ -3272,13 +3272,16 @@ function updateStatus() {
 }
 
 /* ---------- 棋谱 ---------- */
+const flashTimers = new Map();
 function highlightMoveCell(cellIndex) {
   const el = cellsEl[cellIndex];
   if (!el) return;
+  /* 700ms 内再次点击同一手：上一次的定时器会在新动画播到一半时把类摘掉，先取消它 */
+  if (flashTimers.has(el)) clearTimeout(flashTimers.get(el));
   el.classList.remove('flash');
   void el.offsetWidth;
   el.classList.add('flash');
-  setTimeout(() => el.classList.remove('flash'), 700);
+  flashTimers.set(el, setTimeout(() => { flashTimers.delete(el); el.classList.remove('flash'); }, 700));
 }
 
 function renderMoveList() {
@@ -3736,10 +3739,7 @@ function init() {
   /* 棋谱点击高亮 */
   mList.addEventListener('click', e => {
     const li = e.target.closest('li[data-idx]');
-    if (li) {
-      const idx = +li.dataset.idx;
-      highlightMoveCell(idx);
-    }
+    if (li) highlightMoveCell(+li.dataset.idx);
   });
 
   /* 菜单项 */
