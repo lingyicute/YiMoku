@@ -143,8 +143,11 @@ const click = el => el.dispatchEvent(new window.MouseEvent('click', { bubbles: t
   assert(document.querySelectorAll('.cell.on').length === 2, '专家 AI 正常应手');
 
   /* ---- 主题与配色 ---- */
+  assert($('themeBtn').getAttribute('aria-pressed') === 'false', '浅色主题时主题按钮 aria-pressed=false');
+  assert($('themeBtn').getAttribute('aria-label') === '深色模式', '主题开关的名称固定为功能名，不随状态变化');
   click($('themeBtn'));
   assert(document.documentElement.dataset.theme === 'dark', '切换到深色');
+  assert($('themeBtn').getAttribute('aria-pressed') === 'true', '深色主题时主题按钮 aria-pressed=true');
   assert(window.getComputedStyle(document.documentElement).getPropertyValue('color-scheme') === 'dark',
     '原生控件配色（color-scheme）跟随所选主题');
   click($('paletteBtn'));
@@ -296,6 +299,40 @@ const click = el => el.dispatchEvent(new window.MouseEvent('click', { bubbles: t
   kd('r');
   assert(document.querySelectorAll('.cell.on').length === 0, 'R 键重开清盘');
   assert(!$('resultBar').classList.contains('show'), '结果条隐藏');
+
+  /* ---- 弹层打开时的外部点击只关闭弹层，不得穿透到棋盘 ---- */
+  window.eval('restartGame()');
+  click($('paletteBtn'));
+  assert($('palettePop').classList.contains('open'), '配色面板已打开');
+  click(document.querySelector('.cell[data-x="0"][data-y="0"]'));
+  assert(document.querySelectorAll('.cell.on').length === 0, '面板打开时点击棋盘不得落子');
+  assert(!$('palettePop').classList.contains('open'), '外部点击关闭配色面板');
+
+  /* ---- 重开清掉棋谱高亮，空盘上不得残留闪框 ---- */
+  click(document.querySelector('.cell[data-x="7"][data-y="7"]'));
+  click($('mList').children[0]);
+  assert(document.querySelector('.cell[data-x="7"][data-y="7"]').classList.contains('flash'), '棋谱高亮已点亮');
+  click($('restartBtn'));
+  assert(document.querySelectorAll('.cell.flash').length === 0, '重开后清除棋谱高亮');
+
+  /* ---- 计时只在显示的秒数变化时写 DOM ---- */
+  {
+    const clock = $('timeVal');
+    const proto = Object.getOwnPropertyDescriptor(window.Node.prototype, 'textContent');
+    let writes = 0;
+    Object.defineProperty(clock, 'textContent', {
+      configurable: true,
+      get() { return proto.get.call(this); },
+      set(v) { writes++; proto.set.call(this, v); },
+    });
+    window.eval('S.timerRun = false; S.acc = 0; updateTime();');
+    writes = 0;
+    window.eval('S.acc = 61000; updateTime(); updateTime();');
+    assert(writes === 1 && /01:01/.test(clock.textContent), '同一秒内只写一次计时（实际 ' + writes + ' 次）');
+    window.eval('S.acc = 62000; updateTime();');
+    assert(writes === 2 && /01:02/.test(clock.textContent), '秒数变化后写计时（实际 ' + writes + ' 次）');
+    delete clock.textContent;
+  }
 
   /* ---- Worker 生命周期：可控计时与消息，避免依赖真实搜索速度 ---- */
   function workerFixture(options = {}) {
