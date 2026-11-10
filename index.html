@@ -3634,6 +3634,8 @@ function onKey(e) {
     S.cursor.y = Math.max(0, Math.min(N - 1, S.cursor.y + nav[k][1]));
     S.cursorVisible = true;
     syncBoardState();
+    /* 焦点跟随光标：否则它仍停在此前点过的按钮（重开、悔棋、药丸…）上，空格/回车激活的是那个按钮而不是落子 */
+    if (!openPop) cellsEl[idx(S.cursor.x, S.cursor.y)].focus();
     return;
   }
   if (k === ' ' || k === 'enter') {
