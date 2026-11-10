@@ -307,8 +307,11 @@ header{
 /* 悬停 / 光标预览（仅轮到落子方时） */
 .board.t1{--pv:var(--stone1)}
 .board.t2{--pv:var(--stone2)}
-.board.human .cell:not(.on1):not(.on2):hover .s{
-  background:var(--pv); opacity:.45; transform:scale(1);
+/* 触屏的 :hover 会粘在上次点按的格子上：只在真正能悬停的设备上预览，避免残留虚影 */
+@media (hover:hover){
+  .board.human .cell:not(.on1):not(.on2):hover .s{
+    background:var(--pv); opacity:.45; transform:scale(1);
+  }
 }
 .board.showcur .cell.cursor:not(.on) .s{background:var(--pv); opacity:.6; transform:scale(1)}
 .board.showcur .cell.cursor{outline:2.5px solid var(--accent); outline-offset:-1px}
