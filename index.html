@@ -3757,7 +3757,16 @@ function init() {
   $('menuBtn').addEventListener('click', e => { e.stopPropagation(); togglePop($('menuPop')); });
   $('palettePop').addEventListener('click', e => e.stopPropagation());
   $('menuPop').addEventListener('click', e => e.stopPropagation());
-  document.addEventListener('click', () => closePop());
+  /* 弹层打开时，外部点击只用来关闭弹层：必须在捕获阶段拦下，否则同一次点击还会
+     落到背后的棋盘/按钮上（本想关掉配色面板，却在盘上落了一子）。触发按钮与
+     弹层内部的点击照常交给各自处理器。 */
+  document.addEventListener('click', e => {
+    if (!openPop) return;
+    const t = e.target;
+    if (openPop.contains(t) || (t && t.closest && t.closest('#paletteBtn, #menuBtn'))) return;
+    closePop();
+    e.stopPropagation();
+  }, true);
 
   /* 棋谱点击高亮 */
   mList.addEventListener('click', e => {
