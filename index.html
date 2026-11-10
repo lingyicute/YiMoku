@@ -473,6 +473,9 @@ kbd{
 @media (prefers-reduced-motion:reduce){
   /* 仅压缩时长会让 infinite 动画以 0.01ms 周期狂闪：必须同时只播一轮 */
   *,*::before,*::after{animation-duration:.01ms !important; animation-iteration-count:1 !important; transition-duration:.01ms !important}
+  /* 弹层/模态的 visibility 靠 .22s 的 transition-delay 等淡出结束：时长被压缩后这段延迟仍在，
+     已关闭的层会继续可见、可聚焦 220ms——一并清零 */
+  .popover,.modal{transition-delay:0s !important}
   .tdot{animation:none; opacity:1}
 }
 </style>
