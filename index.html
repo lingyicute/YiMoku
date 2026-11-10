@@ -134,7 +134,9 @@ body{
     radial-gradient(560px 300px at 88% -60px, var(--glow1), transparent 70%),
     radial-gradient(480px 360px at -6% 6%, var(--glow2), transparent 70%);
 }
-#app{position:relative; z-index:1; max-width:1120px; margin:0 auto; padding:0 18px 46px}
+/* viewport-fit=cover 下内容会伸进刘海 / Home 指示条：左右与底部留白不得小于安全区 */
+#app{position:relative; z-index:1; max-width:1120px; margin:0 auto;
+  padding:0 max(18px,env(safe-area-inset-right)) calc(46px + env(safe-area-inset-bottom)) max(18px,env(safe-area-inset-left))}
 
 /* ---------------- 顶栏 ---------------- */
 header{
@@ -146,7 +148,8 @@ header{
   box-shadow:0 1px 0 hsl(var(--ah) 30% 30% / .25);
 }
 .header-inner{
-  max-width:1120px; margin:0 auto; padding:0 18px;
+  max-width:1120px; margin:0 auto;
+  padding:0 max(18px,env(safe-area-inset-right)) 0 max(18px,env(safe-area-inset-left));
   display:flex; align-items:center; justify-content:space-between;
   height:var(--header-h); gap:12px;
 }
