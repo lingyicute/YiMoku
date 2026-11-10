@@ -69,6 +69,7 @@ html{
 
 /* ---------- 浅色主题 ---------- */
 [data-theme="light"]{
+  color-scheme:light;                /* 滚动条等原生控件跟随所选主题，而非系统偏好 */
   --bg:#F5F3F8; --bg2:#EDEAF3;
   --surface:#FFFFFF; --surface2:#EAE5F2; --surface3:#E1DAF1;
   --board:#DED8EE; --cell:#EDE9F6; --cell-hi:#FFFFFF;
@@ -94,6 +95,7 @@ html{
 }
 /* ---------- 深色主题 ---------- */
 [data-theme="dark"]{
+  color-scheme:dark;
   --bg:#17131F; --bg2:#100D16;
   --surface:#251F31; --surface2:#2E2740; --surface3:#3A3151;
   --board:#1F1930; --cell:#2A2340; --cell-hi:#352C4E;

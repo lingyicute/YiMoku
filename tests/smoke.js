@@ -144,6 +144,8 @@ const click = el => el.dispatchEvent(new window.MouseEvent('click', { bubbles: t
   /* ---- 主题与配色 ---- */
   click($('themeBtn'));
   assert(document.documentElement.dataset.theme === 'dark', '切换到深色');
+  assert(window.getComputedStyle(document.documentElement).getPropertyValue('color-scheme') === 'dark',
+    '原生控件配色（color-scheme）跟随所选主题');
   click($('paletteBtn'));
   assert($('palettePop').classList.contains('open'), '配色面板打开');
   assert(document.querySelectorAll('.swatch').length === 8, '8 个配色');
