@@ -3086,12 +3086,20 @@ function saveSettings() {
    因此 endGame 走 saveSession() 时会被清空。
    读档逐手校验：整数坐标、盘内、落点不重复、中途不得出现五连、
    模式/难度/执子合法。任何一项异常即整档作废并回到空盘。 */
+let lastSessionJSON = null;
 function saveSession() {
-  if (!S.moves.length || S.over) { store.setJSON('session', null); return; }
-  store.setJSON('session', {
+  const session = !S.moves.length || S.over ? null : {
     v: 1, mode: S.mode, diff: S.diff, side: S.side,
     moves: S.moves.map(m => [m.x, m.y]), acc: Math.round(elapsedMs())
-  });
+  };
+  lastSessionJSON = JSON.stringify(session);
+  store.set('session', lastSessionJSON);
+}
+function saveSessionClock() {
+  /* 仅补写本页最后一次保存的局面；另一标签页已更新或删除时不要覆盖它。 */
+  if (!S.moves.length || S.over || lastSessionJSON === null ||
+      store.get('session', null) !== lastSessionJSON) return;
+  saveSession();
 }
 function restoreSession() {
   const s = store.getJSON('session', null);
@@ -3764,9 +3772,9 @@ function init() {
   /* 计时刷新 */
   setInterval(() => { if (S.timerRun) updateTime(); }, 250);
 
-  /* 页面离开/转入后台时补写一次存档：否则 acc 只停在最后一手，刷新会丢掉思考用时 */
-  window.addEventListener('pagehide', saveSession);
-  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') saveSession(); });
+  /* 页面离开/转入后台时补写计时，但不覆盖其他标签页写入的存档。 */
+  window.addEventListener('pagehide', saveSessionClock);
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') saveSessionClock(); });
 
   /* 首次访问展示玩法 */
   updateSoundUI();
