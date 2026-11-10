@@ -3637,7 +3637,9 @@ function onKey(e) {
     closePop(true);
     return;
   }
-  if (e.key === 'Tab' && openPop) { trapTab(e, openPop); return; }
+  /* 弹层（配色 / 菜单）打开时只管 Tab 循环：方向键、空格、Z/R/H 等棋盘快捷键
+     不得穿透到背后的棋盘——否则在菜单里按 R 会直接重开对局。 */
+  if (openPop) { if (e.key === 'Tab') trapTab(e, openPop); return; }
   if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') { e.preventDefault(); undo(); return; }
   if (e.ctrlKey || e.metaKey || e.altKey) return;
   const k = e.key.toLowerCase();
@@ -3650,7 +3652,7 @@ function onKey(e) {
     S.cursorVisible = true;
     syncBoardState();
     /* 焦点跟随光标：否则它仍停在此前点过的按钮（重开、悔棋、药丸…）上，空格/回车激活的是那个按钮而不是落子 */
-    if (!openPop) cellsEl[idx(S.cursor.x, S.cursor.y)].focus();
+    cellsEl[idx(S.cursor.x, S.cursor.y)].focus();
     return;
   }
   if (k === ' ' || k === 'enter') {

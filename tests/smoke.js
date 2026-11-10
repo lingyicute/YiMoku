@@ -198,6 +198,26 @@ const click = el => el.dispatchEvent(new window.MouseEvent('click', { bubbles: t
     '光标下的棋子保持不透明（实际：' + (curStone && window.getComputedStyle(curStone).opacity) + '）');
   kd('r');
 
+  /* ---- 弹层打开时，棋盘快捷键不得穿透到背后的棋盘 ---- */
+  click(document.querySelector('.cell[data-x="0"][data-y="0"]'));
+  const stonesPop = document.querySelectorAll('.cell.on').length;
+  assert(stonesPop === 1, '穿透测试前提：盘上有 1 子（实际：' + stonesPop + '）');
+  click($('menuBtn'));
+  assert($('menuPop').classList.contains('open'), '菜单已打开');
+  const curBefore = window.eval('S.cursor.x + "," + S.cursor.y');
+  kd('r', $('mHelp'));
+  assert(document.querySelectorAll('.cell.on').length === stonesPop, '菜单打开时 R 键不得重开对局');
+  kd('z', $('mHelp'));
+  assert(document.querySelectorAll('.cell.on').length === stonesPop, '菜单打开时 Z 键不得悔棋');
+  kd('ArrowRight', $('mHelp'));
+  assert(window.eval('S.cursor.x + "," + S.cursor.y') === curBefore, '菜单打开时方向键不得移动棋盘光标');
+  kd('h', $('mHelp'));
+  assert(!$('modalHelp').classList.contains('open'), '菜单打开时 H 键不得穿透打开说明');
+  kd('Escape');
+  assert(!$('menuPop').classList.contains('open'), '菜单仍可用 Esc 关闭');
+  kd('r');
+  assert(document.querySelectorAll('.cell.on').length === 0, '菜单关闭后 R 键恢复重开');
+
   /* ---- 双人五连胜利渲染 ---- */
   click(document.querySelector('[data-mode="pvp"]'));
   const seq = [[0,0],[0,1],[1,0],[1,1],[2,0],[2,1],[3,0],[3,1],[4,0]];
