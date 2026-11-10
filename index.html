@@ -3295,8 +3295,9 @@ function recordResult() {
     else if (S.winner === S.side) r.ai.win++;
     else r.ai.lose++;
     if (S.winner === S.side) {
-      const mv = S.moves.length;
-      if (!r.best || mv < r.best.moves) r.best = { moves: mv, ms: Math.round(elapsedMs()), diff: S.diff };
+      const mv = S.moves.length, ms = Math.round(elapsedMs());
+      /* 手数相同则比用时：否则同手数下更快的一局永远刷新不了「最快取胜」 */
+      if (!r.best || mv < r.best.moves || (mv === r.best.moves && ms < r.best.ms)) r.best = { moves: mv, ms, diff: S.diff };
     }
   } else {
     if (S.winner === 0) r.pvp.draw++;
