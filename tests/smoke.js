@@ -170,10 +170,13 @@ const click = el => el.dispatchEvent(new window.MouseEvent('click', { bubbles: t
   /* ---- 键盘操作 ---- */
   const kd = (key, target) => (target || document.body)
     .dispatchEvent(new window.KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }));
-  kd('ArrowRight'); kd('ArrowDown');
+  /* 光标从 H8 移到 L9：AI 的应手只会落在 H8 两格以内，L9 必为空点 */
+  kd('ArrowRight'); kd('ArrowRight'); kd('ArrowRight'); kd('ArrowDown');
   assert($('board').classList.contains('showcur'), '方向键后显示光标');
+  const stonesBefore = document.querySelectorAll('.cell.on').length;
   kd(' ');
-  assert(document.querySelectorAll('.cell.on').length >= 1, '空格在光标处落子');
+  assert(document.querySelectorAll('.cell.on').length === stonesBefore + 1 &&
+    document.querySelector('.cell[data-x="10"][data-y="8"]').classList.contains('on1'), '空格在光标处落子');
 
   /* ---- 双人五连胜利渲染 ---- */
   click(document.querySelector('[data-mode="pvp"]'));
