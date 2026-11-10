@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#F5F3F8">
 <meta name="description" content="YiMoku - a privacy-first, offline H5 gomoku (five-in-a-row) with a threat-aware alpha-beta AI, four difficulties and local two-player mode.">
 <!-- 内联图标：避免浏览器回退请求 /favicon.ico，保持「零网络请求」承诺 -->
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%236755a4'/%3E%3Ccircle cx='9' cy='9' r='4' fill='%231b1b1f'/%3E%3Ccircle cx='20' cy='9' r='4' fill='%23ffffff'/%3E%3Ccircle cx='9' cy='20' r='4' fill='%23ffffff'/%3E%3Ccircle cx='20' cy='20' r='4' fill='%231b1b1f'/%3E%3C/svg%3E">
@@ -19,6 +20,9 @@
     }
     document.documentElement.dataset.theme = t;
     document.documentElement.dataset.accent = a || 'purple';
+    /* theme-color 同步提前到首帧之前，深色下地址栏不先闪一下浅色（颜色与应用层 THEME_COLOR 一致） */
+    var m = document.querySelector('meta[name="theme-color"]');
+    if (m && t === 'dark') m.setAttribute('content', '#100D16');
   } catch (e) {
     document.documentElement.dataset.theme = 'light';
     document.documentElement.dataset.accent = 'purple';
@@ -3064,10 +3068,28 @@ function updateSoundUI() {
   }
 }
 
+/* ---------- 主题 ---------- */
+const THEME_COLOR = { light: '#F5F3F8', dark: '#100D16' };   // 与 --bg / 深色顶栏 --bg2 一致
+const storedTheme = () => { const t = store.get('theme', null); return t === 'light' || t === 'dark' ? t : null; };
+const systemTheme = () => (window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches) ? 'dark' : 'light';
+function applyTheme(t) {
+  document.documentElement.dataset.theme = t;
+  /* 移动端地址栏 / 系统 UI 跟随页面深浅色，而不是停在 <head> 里写死的浅色 */
+  const meta = document.querySelector('meta[name="theme-color"]');
+  if (meta) meta.setAttribute('content', THEME_COLOR[t]);
+}
+/* 未手动选过主题时跟随系统切换：<head> 里的预初始化脚本只在加载那一刻读了一次系统偏好 */
+function watchSystemTheme() {
+  if (!window.matchMedia) return;
+  const mq = matchMedia('(prefers-color-scheme: dark)');
+  const follow = () => { if (!storedTheme()) applyTheme(mq.matches ? 'dark' : 'light'); };
+  if (mq.addEventListener) mq.addEventListener('change', follow);
+  else if (mq.addListener) mq.addListener(follow);
+}
+
 /* ---------- 存储加载 ---------- */
 function loadPrefs() {
-  const t = store.get('theme', null);
-  if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t;
+  applyTheme(storedTheme() || systemTheme());
   const a = store.get('accent', null);
   if (a) document.documentElement.dataset.accent = ACCENTS.includes(a) ? a : 'purple';
   const m = store.get('mode', 'ai'); if (m === 'pvp' || m === 'ai') S.mode = m;
@@ -3726,9 +3748,10 @@ function init() {
   /* 主题 */
   $('themeBtn').addEventListener('click', () => {
     const cur = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
-    document.documentElement.dataset.theme = cur;
+    applyTheme(cur);
     store.set('theme', cur);
   });
+  watchSystemTheme();
   /* 配色 / 菜单弹层 */
   $('paletteBtn').addEventListener('click', e => { e.stopPropagation(); togglePop($('palettePop')); });
   $('menuBtn').addEventListener('click', e => { e.stopPropagation(); togglePop($('menuPop')); });
