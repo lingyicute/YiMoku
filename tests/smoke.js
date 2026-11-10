@@ -182,6 +182,9 @@ const click = el => el.dispatchEvent(new window.MouseEvent('click', { bubbles: t
   assert($('board').classList.contains('showcur'), '方向键后显示光标');
   assert(document.activeElement === document.querySelector('.cell.cursor'),
     '方向键后焦点跟随光标，空格/回车不会再激活此前聚焦的按钮');
+  const tabStops = [...document.querySelectorAll('.cell')].filter(c => c.tabIndex === 0);
+  assert(tabStops.length === 1 && tabStops[0] === document.querySelector('.cell.cursor'),
+    '棋盘只占一个 Tab 停靠点且跟随光标（实际：' + tabStops.length + ' 个）');
   const stonesBefore = document.querySelectorAll('.cell.on').length;
   kd(' ');
   assert(document.querySelectorAll('.cell.on').length === stonesBefore + 1 &&
@@ -202,6 +205,10 @@ const click = el => el.dispatchEvent(new window.MouseEvent('click', { bubbles: t
   assert($('resultBar').classList.contains('show'), '胜利结果条显示');
   assert($('resultText').textContent.includes('黑棋获胜'), '双人文案：黑棋获胜');
   assert(document.querySelectorAll('.cell.win').length === 5, '高亮 5 连');
+  /* 终局后方向键仍能在盘内移动焦点：游走 tabindex 下这是键盘到达其他格子的唯一途径 */
+  kd('ArrowRight');
+  assert(document.activeElement === document.querySelector('.cell[data-x="5"][data-y="0"]') &&
+    document.activeElement.tabIndex === 0, '终局后方向键仍可移动棋盘焦点');
   assert(parseInt($('recTotal').textContent) === 1, '清除后新记录 +1');
   assert($('statusStone').classList.contains('on1') && !$('statusStone').classList.contains('on2'),
     '黑棋获胜时状态卡显示黑子');
