@@ -502,7 +502,7 @@ kbd{
       <span class="badge">Web</span>
     </div>
     <div class="actions">
-      <button class="iconbtn" id="themeBtn" title="切换深浅色" aria-label="切换深浅色">
+      <button class="iconbtn" id="themeBtn" title="切换深浅色" aria-label="深色模式" aria-pressed="false">
         <svg class="ic-moon" viewBox="0 0 24 24" fill="currentColor"><path d="M20.6 14.2A8.6 8.6 0 0 1 9.8 3.4a.7.7 0 0 0-.9-.8A9.6 9.6 0 1 0 21.4 15.1a.7.7 0 0 0-.8-.9z"/></svg>
         <svg class="ic-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round">
           <circle cx="12" cy="12" r="4.1" fill="currentColor" stroke="none"/>
@@ -3077,6 +3077,9 @@ function applyTheme(t) {
   /* 移动端地址栏 / 系统 UI 跟随页面深浅色，而不是停在 <head> 里写死的浅色 */
   const meta = document.querySelector('meta[name="theme-color"]');
   if (meta) meta.setAttribute('content', THEME_COLOR[t]);
+  /* 深浅色是一个开关：按钮名固定为功能名「深色模式」（不随状态变），状态交给 aria-pressed，读屏读作「深色模式，开关，已按下/未按下」。 */
+  const toggle = document.getElementById('themeBtn');
+  if (toggle) toggle.setAttribute('aria-pressed', t === 'dark' ? 'true' : 'false');
 }
 /* 未手动选过主题时跟随系统切换：<head> 里的预初始化脚本只在加载那一刻读了一次系统偏好 */
 function watchSystemTheme() {
