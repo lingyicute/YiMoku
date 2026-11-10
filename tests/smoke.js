@@ -175,8 +175,11 @@ const click = el => el.dispatchEvent(new window.MouseEvent('click', { bubbles: t
   document.querySelector('footer a').dispatchEvent(linkEnter);
   assert(!linkEnter.defaultPrevented, '链接上的回车不被拦截');
   /* 光标从 H8 移到 L9：AI 的应手只会落在 H8 两格以内，L9 必为空点 */
+  $('restartBtn').focus();                       // 模拟刚用鼠标点过棋盘外的按钮
   kd('ArrowRight'); kd('ArrowRight'); kd('ArrowRight'); kd('ArrowDown');
   assert($('board').classList.contains('showcur'), '方向键后显示光标');
+  assert(document.activeElement === document.querySelector('.cell.cursor'),
+    '方向键后焦点跟随光标，空格/回车不会再激活此前聚焦的按钮');
   const stonesBefore = document.querySelectorAll('.cell.on').length;
   kd(' ');
   assert(document.querySelectorAll('.cell.on').length === stonesBefore + 1 &&
