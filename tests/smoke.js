@@ -249,6 +249,20 @@ const click = el => el.dispatchEvent(new window.MouseEvent('click', { bubbles: t
 
   `);
 
+  /* ---- 最快取胜：手数相同时，用时更短的一局应刷新纪录 ---- */
+  window.eval(`
+    restartGame();
+    S.mode = "ai"; S.side = 1;
+    S.records.best = { moves: 9, ms: 600000, diff: "easy" };
+    for (let k = 0; k < 5; k++) {
+      doMove(k, 0);
+      if (k < 4) doMove(k, 1);
+    }
+    if (S.records.best.moves !== 9 || S.records.best.ms >= 600000) {
+      throw new Error("同为 9 手但更快的胜局未刷新最快取胜");
+    }
+  `);
+
   kd('r');
   assert(document.querySelectorAll('.cell.on').length === 0, 'R 键重开清盘');
   assert(!$('resultBar').classList.contains('show'), '结果条隐藏');
