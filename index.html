@@ -3305,6 +3305,11 @@ function highlightMoveCell(cellIndex) {
   el.classList.add('flash');
   flashTimers.set(el, setTimeout(() => { flashTimers.delete(el); el.classList.remove('flash'); }, 700));
 }
+/* 重开/悔棋后那一手已不在盘上：仍在播的闪框动画会在已清空的格子（或紧接着落在同格的新子）上播完，先全部取消。 */
+function clearMoveFlash() {
+  flashTimers.forEach((timer, el) => { clearTimeout(timer); el.classList.remove('flash'); });
+  flashTimers.clear();
+}
 
 function renderMoveList() {
   mCount.textContent = S.moves.length + ' 手';
@@ -3534,6 +3539,7 @@ function undo() {
   if (!S.moves.length) return;
   if (S.mode === 'ai' && S.side === WHITE && S.moves.length === 1) return; // AI 先行的首手不可撤
   cancelAI();
+  clearMoveFlash();
   const wasOver = S.over;
   let n = 1;
   if (S.mode === 'ai' && turn() === S.side) n = 2;   // 已回到我方回合 → 撤一对
@@ -3560,6 +3566,7 @@ function undo() {
 }
 function restartGame() {
   cancelAI();
+  clearMoveFlash();
   S.board = makeBoard(); S.moves = []; S.over = false; S.winner = 0;
   S.started = false; S.acc = 0; S.timerRun = false; S.cursorVisible = false;
   markWin(null); markLast(-1);
