@@ -4,7 +4,8 @@
  * 在无头 DOM 中启动真实的 index.html 并端到端驱动：
  * 首次玩法说明 → 落子与 AI 应手 → 撤销一对 → 模式/难度/执子切换 →
  * 主题与配色弹层 → 菜单/战绩/清除记录 → 键盘操作 → 五连高亮与
- * 三种结果条文案（人机玩家胜 / 人机 AI 胜 / 双人胜）。
+ * 三种结果条文案（人机玩家胜 / 人机 AI 胜 / 双人胜）；另用可控假 Worker
+ * 验证在途取消、过期消息、资源释放以及失败后的主线程回退。
  *
  * 未安装 jsdom 时打印跳过提示并以 0 退出，保证 `npm test` 在
  * 纯克隆环境（无 node_modules）下依然可用。
@@ -295,6 +296,135 @@ const click = el => el.dispatchEvent(new window.MouseEvent('click', { bubbles: t
   kd('r');
   assert(document.querySelectorAll('.cell.on').length === 0, 'R 键重开清盘');
   assert(!$('resultBar').classList.contains('show'), '结果条隐藏');
+
+  /* ---- Worker 生命周期：可控计时与消息，避免依赖真实搜索速度 ---- */
+  function workerFixture(options = {}) {
+    const workers = [], activeURLs = new Set(), timers = new Map();
+    let nextTimer = 0, nextURL = 0, creates = 0;
+    const workerDom = new JSDOM(html, {
+      url: 'http://localhost/', runScripts: 'dangerously', pretendToBeVisual: true,
+      beforeParse(w) {
+        w.localStorage.setItem('yimoku:seenHelp', '1');
+        w.setTimeout = fn => { const id = ++nextTimer; timers.set(id, fn); return id; };
+        w.clearTimeout = id => timers.delete(id);
+        w.URL.createObjectURL = () => { const url = 'blob:test-' + ++nextURL; activeURLs.add(url); return url; };
+        w.URL.revokeObjectURL = url => activeURLs.delete(url);
+        w.Worker = class {
+          constructor(url) {
+            if (++creates === options.failCreateAt) throw new Error('Worker construction failed');
+            this.url = url; this.messages = []; this.terminated = false; workers.push(this);
+          }
+          postMessage(message) {
+            if (options.throwOnPost) throw new Error('postMessage failed');
+            this.messages.push(message);
+          }
+          terminate() { this.terminated = true; }
+        };
+      },
+    });
+    const w = workerDom.window, d = w.document;
+    return {
+      w, d, workers, activeURLs,
+      move(x, y) { d.querySelector(`.cell[data-x="${x}"][data-y="${y}"]`).click(); },
+      tick() {
+        const id = w.eval('S.aiTimer'), fn = timers.get(id);
+        assert(typeof fn === 'function', 'AI 应有一个待执行的计时器');
+        timers.delete(id); fn();
+      },
+      close() { w.close(); },
+    };
+  }
+  {
+    const f = workerFixture(), { w, d, workers, activeURLs } = f;
+    const first = workers[0];
+    f.move(7, 7);
+    w.eval('undo()');
+    assert(workers.length === 1 && !first.terminated, '仅取消延迟时应复用空闲 Worker');
+    f.move(7, 7); f.tick();
+    const oldRequest = first.messages[0];
+    assert(oldRequest && w.eval('S.aiThinking'), 'AI 搜索已投递到 Worker');
+    w.eval('undo()');
+    assert(first.terminated, '悔棋必须中止正在计算的 Worker');
+    assert(!activeURLs.has(first.url), '取消尚未回复的 Worker 时释放 Blob URL');
+    assert(workers.length === 2, '取消在途搜索后为下一次搜索创建新 Worker');
+
+    f.move(6, 7); f.tick();
+    const second = workers[1];
+    assert(second.messages.length === 1, '新局搜索不应排在已取消的搜索后面');
+    first.onmessage({ data: { id: oldRequest.id, mv: { x: 8, y: 7 } } });
+    first.onerror({});
+    assert(d.querySelectorAll('.cell.on').length === 1 && w.eval('S.aiThinking'), '过期消息和错误不得影响新请求');
+    w.eval('undo()');
+    assert(second.terminated, '过期回调不得清除新 Worker 的在途状态');
+
+    f.move(7, 7); f.tick();
+    const third = workers[2], request = third.messages[0];
+    third.onmessage({ data: { id: request.id, mv: { x: 8, y: 7 } } });
+    assert(d.querySelectorAll('.cell.on').length === 2 && !w.eval('S.aiThinking'), '新 Worker 应正常落子');
+    assert(!activeURLs.has(third.url), '收到回复后释放 Blob URL');
+    w.eval('undo()');
+    assert(!third.terminated && workers.length === 3, '正常回复后悔棋应复用空闲 Worker');
+    f.close();
+  }
+  for (const operation of ['restartGame()', 'setMode("pvp")', 'setSide(2)']) {
+    const f = workerFixture(), { w, d, workers, activeURLs } = f;
+    f.move(7, 7); f.tick();
+    const old = workers[0], request = old.messages[0];
+    w.eval(operation);
+    assert(old.terminated && !activeURLs.has(old.url) && workers.length === 2, operation + '应取消在途搜索');
+    old.onmessage({ data: { id: request.id, mv: { x: 8, y: 7 } } });
+    assert(d.querySelectorAll('.cell.on').length === 0, operation + '后不得接受旧局的着法');
+    if (operation === 'setSide(2)') {
+      f.tick();
+      const opening = workers[1].messages[0];
+      assert(opening && opening.aiP === 1 && opening.board.every(v => v === 0), '执白新局应立即向新 Worker 请求黑棋首手');
+      workers[1].onmessage({ data: { id: opening.id, mv: { x: 7, y: 7 } } });
+      assert(d.querySelectorAll('.cell.on1').length === 1 && !w.eval('S.aiThinking'), 'AI 首手应正确落在新局');
+    }
+    f.close();
+  }
+  for (const failCreateAt of [1, 2]) {
+    const f = workerFixture({ failCreateAt }), { w, d, workers, activeURLs } = f;
+    if (failCreateAt === 2) {
+      f.move(7, 7); f.tick(); w.eval('undo()');
+      assert(workers[0].terminated, '重建失败前必须中止旧 Worker');
+    }
+    assert(w.eval('S.aiWorker === null') && activeURLs.size === 0, '构造失败时回退并释放 Blob URL');
+    f.move(7, 7); f.tick();
+    assert(d.querySelectorAll('.cell.on').length === 2 && !w.eval('S.aiThinking'), '构造失败后主线程仍能应手');
+    f.close();
+  }
+  {
+    const f = workerFixture({ throwOnPost: true }), { w, d, workers, activeURLs } = f;
+    f.move(7, 7); f.tick();
+    assert(workers[0].terminated && !activeURLs.has(workers[0].url), 'postMessage 抛错时销毁 Worker 并释放 URL');
+    assert(w.eval('S.aiThinking && S.aiWorker === null'), 'postMessage 抛错时重新排程主线程回退');
+    f.tick();
+    assert(d.querySelectorAll('.cell.on').length === 2 && !w.eval('S.aiThinking'), 'postMessage 抛错后仍可完成 AI 应手');
+    f.close();
+  }
+  for (const [name, response] of [
+    ['Worker 运行错误', 'onerror'],
+    ['消息反序列化失败', 'onmessageerror'],
+    ['空着法', { mv: null }],
+    ['越界着法', { mv: { x: -1, y: 0 } }],
+    ['小数着法', { mv: { x: 1.5, y: 0 } }],
+    ['已有棋子', { mv: { x: 7, y: 7 } }],
+  ]) {
+    const f = workerFixture(), { w, d, workers, activeURLs } = f;
+    f.move(7, 7); f.tick();
+    const worker = workers[0], request = worker.messages[0];
+    if (typeof response === 'string') {
+      assert(typeof worker[response] === 'function', '应处理' + name);
+      worker[response]({});
+    } else worker.onmessage({ data: { id: request.id, ...response } });
+    assert(worker.terminated && !activeURLs.has(worker.url), name + '应释放失效 Worker');
+    assert(d.querySelectorAll('.cell.on').length === 1 && w.eval('S.aiThinking && S.aiWorker === null'),
+      name + '不得污染棋盘或卡死，应重新排程回退');
+    f.tick();
+    assert(d.querySelectorAll('.cell.on').length === 2 && !w.eval('S.aiThinking'), name + '后主线程仍能应手');
+    f.close();
+  }
 
   console.log('tests/smoke.js: PASS');
   process.exit(0);

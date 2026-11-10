@@ -3392,6 +3392,18 @@ function endGame(winner, cells) {
    与 tests/worker-contract.js 共用同一份契约。标记缺失/错序、Worker 构造失败
    或运行期脚本报错，一律退回主线程同步搜索（scheduleAI 已有该分支），
    绝不留下一个永远不回消息的坏 Worker。 */
+let aiWorkerBusy = false, aiWorkerRelease = null;
+function disposeAiWorker() {
+  const worker = S.aiWorker;
+  S.aiWorker = null; aiWorkerBusy = false;
+  if (worker) { try { worker.terminate(); } catch (e) {} }
+  if (aiWorkerRelease) { aiWorkerRelease(); aiWorkerRelease = null; }
+}
+function failAiWorker(worker) {
+  if (S.aiWorker !== worker) return;                // 被取消的旧 Worker 不得影响新任务
+  disposeAiWorker();
+  if (S.aiThinking && !S.over) scheduleAI();        // 在途请求不会回复，回退主线程
+}
 function initAiWorker() {
   if (typeof Worker === "undefined" || typeof Blob === "undefined" ||
       typeof URL === "undefined" || typeof URL.createObjectURL !== "function") return;
@@ -3420,33 +3432,38 @@ function initAiWorker() {
     const blob = new Blob([workerScript], { type: "text/javascript" });
     url = URL.createObjectURL(blob);
     const worker = new Worker(url);
+    S.aiWorker = worker; aiWorkerRelease = release;
     worker.onmessage = function (e) {
-      release();                                   // Worker 已成功跑起来，Blob 可释放
+      if (S.aiWorker !== worker) return;
       const data = e.data;
       if (!data || data.id !== S.aiReqId) return;
+      release();                                   // Worker 已成功跑起来，Blob 可释放
+      aiWorkerBusy = false;
       if (S.over) { S.aiThinking = false; updateStatus(); return; }
+      const mv = data.mv;
+      if (!mv || !Number.isInteger(mv.x) || !Number.isInteger(mv.y) ||
+          !inB(mv.x, mv.y) || S.board[idx(mv.x, mv.y)] !== EMPTY) {
+        failAiWorker(worker); return;               // 无效回复不能落子或让对局卡住
+      }
       S.aiThinking = false;
-      if (data.mv) doMove(data.mv.x, data.mv.y);
+      doMove(mv.x, mv.y);
     };
-    worker.onerror = function () {
-      if (S.aiWorker !== worker) return;
-      try { worker.terminate(); } catch (e) {}
-      S.aiWorker = null;
-      release();
-      /* 在途请求不会收到回复：改由主线程重新排程，避免 aiThinking 永久卡死。 */
-      if (S.aiThinking && !S.over) scheduleAI();
-    };
-    S.aiWorker = worker;
+    worker.onerror = worker.onmessageerror = function () { failAiWorker(worker); };
   } catch (e) {
-    S.aiWorker = null;
+    disposeAiWorker();
   } finally {
     if (!S.aiWorker) release();                     // 失败路径同样释放 Blob URL
   }
 }
 function cancelAI() {
-  if (S.aiTimer) { clearTimeout(S.aiTimer); S.aiTimer = null; }
+  if (S.aiTimer !== null) { clearTimeout(S.aiTimer); S.aiTimer = null; }
   S.aiReqId++; // 作废任何在途 Worker 搜索请求
   S.aiThinking = false;
+  if (aiWorkerBusy) {
+    /* 搜索是同步计算，单靠请求编号无法中断；否则新任务会排在过期搜索后面。 */
+    disposeAiWorker();
+    initAiWorker();
+  }
 }
 function scheduleAI() {
   cancelAI();
@@ -3462,7 +3479,11 @@ function scheduleAI() {
     S.aiTimer = null;
     if (S.over || currentReq !== S.aiReqId) { S.aiThinking = false; return; }
     if (S.aiWorker) {
-      S.aiWorker.postMessage({ id: currentReq, type: 'chooseMove', board: boardCopy, diff: diff, aiP: p });
+      const worker = S.aiWorker;
+      aiWorkerBusy = true;
+      try {
+        worker.postMessage({ id: currentReq, type: 'chooseMove', board: boardCopy, diff: diff, aiP: p });
+      } catch (e) { failAiWorker(worker); }
     } else {
       const mv = chooseAiMove(boardCopy, diff, p);
       if (currentReq !== S.aiReqId) return;
