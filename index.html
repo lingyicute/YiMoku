@@ -2950,7 +2950,7 @@ const S = {
   started: false, timerRun: false, t0: 0, acc: 0,
   aiThinking: false, aiTimer: null,
   aiWorker: null, aiReqId: 0,
-  records: freshRecords(), prevLast: -1, prevCursor: -1,
+  records: freshRecords(), prevLast: -1, prevCursor: -1, tabCell: idx(7, 7),
   lastRecordSnapshot: null
 };
 
@@ -3156,6 +3156,9 @@ function buildBoard() {
     const c = document.createElement('button');
     c.type = 'button'; c.className = 'cell';
     c.dataset.x = x; c.dataset.y = y;
+    /* 游走 tabindex：整盘只占一个 Tab 停靠点（光标所在格，见 syncBoardState），盘内用方向键移动；
+       否则键盘用户要连按 225 次 Tab 才能越过棋盘 */
+    c.tabIndex = -1;
     c.setAttribute('aria-label', coord(x, y));
     c.innerHTML = '<i class="s"></i>';
     c.addEventListener('focus', () => {
@@ -3166,6 +3169,7 @@ function buildBoard() {
     cellsEl[idx(x, y)] = c;
   }
   boardEl.appendChild(frag);
+  cellsEl[S.tabCell].tabIndex = 0;
   const ch = $('colHeads'), rh = $('rowHeads');
   for (let x = 0; x < N; x++) { const s = document.createElement('span'); s.textContent = LETTERS[x]; ch.appendChild(s); }
   for (let y = 0; y < N; y++) { const s = document.createElement('span'); s.textContent = y + 1; rh.appendChild(s); }
@@ -3192,7 +3196,8 @@ function isHuman(p) { return S.mode === 'pvp' || p === S.side; }
 function playerName(p) { return p === BLACK ? '黑棋' : '白棋'; }
 
 function syncBoardState() {
-  const t = turn();
+  const t = turn(), ci = idx(S.cursor.x, S.cursor.y);
+  if (ci !== S.tabCell) { cellsEl[S.tabCell].tabIndex = -1; cellsEl[ci].tabIndex = 0; S.tabCell = ci; }
   boardEl.classList.toggle('t1', t === BLACK);
   boardEl.classList.toggle('t2', t === WHITE);
   boardEl.classList.toggle('human', !S.over && !S.aiThinking && isHuman(t));
@@ -3628,7 +3633,7 @@ function onKey(e) {
   const nav = { arrowup: [0, -1], w: [0, -1], arrowdown: [0, 1], s: [0, 1], arrowleft: [-1, 0], a: [-1, 0], arrowright: [1, 0], d: [1, 0] };
   if (nav[k]) {
     e.preventDefault();
-    if (S.over || S.aiThinking) return;
+    /* 终局或 AI 思考中也照常移动：游走 tabindex 下，方向键是键盘到达其他格子的唯一途径 */
     S.cursor.x = Math.max(0, Math.min(N - 1, S.cursor.x + nav[k][0]));
     S.cursor.y = Math.max(0, Math.min(N - 1, S.cursor.y + nav[k][1]));
     S.cursorVisible = true;
