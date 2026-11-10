@@ -115,12 +115,53 @@ const clickCell = (w, d, x, y) => {
   close();
 }
 
+/* 2d) localStorage 是不可信输入：原型键和无法转换为数字的对象也不得破坏启动。 */
+{
+  const hostile = { toString: null, valueOf: null };
+  const records = [
+    ['总局数', { total: hostile }],
+    ['AI 胜场', { ai: { win: hostile } }],
+    ['双人胜场', { pvp: { b: hostile } }],
+    ['最快取胜手数', { best: { moves: hostile } }],
+    ['最快取胜时间', { best: { moves: 9, ms: hostile } }],
+    ['最快取胜难度', { best: { moves: 9, ms: 100, diff: hostile } }],
+  ];
+  for (const [name, record] of records) {
+    const { d, errors, close } = boot(undefined, { records: JSON.stringify(record) });
+    ok(`畸形战绩「${name}」：棋盘可用`, d.querySelectorAll('.cell').length === 225);
+    ok(`畸形战绩「${name}」：无脚本异常`, errors.length === 0, errors.join(' | '));
+    close();
+  }
+  for (const diff of ['__proto__', 'constructor', 'toString']) {
+    const { d, errors, close } = boot(undefined, {
+      diff,
+      records: JSON.stringify({ best: { moves: 9, ms: 100, diff } }),
+    });
+    ok(`原型难度「${diff}」：偏好回退为简单`,
+      d.getElementById('titleSub').textContent === '人机对战 · 简单' &&
+      !!d.querySelector('[data-diff="easy"].on'));
+    ok(`原型难度「${diff}」：战绩回退为人机`, /（人机）/.test(d.getElementById('recBest').textContent));
+    ok(`原型难度「${diff}」：无脚本异常`, errors.length === 0, errors.join(' | '));
+    close();
+  }
+  const { d, close } = boot(undefined, {
+    records: JSON.stringify({ ai: { win: [3], lose: true, draw: '2' } }),
+  });
+  ok('畸形战绩：只接受数字或数字字符串', d.getElementById('recAI').textContent === '0 胜 0 负 2 和');
+  close();
+}
+
 /* 3) 畸形存档必须被拒绝，且页面仍停在空盘 */
 const bad = [
   ['版本号不符', { v: 2, mode: 'pvp', diff: 'easy', side: 1, moves: [[7, 7]], acc: 0 }],
   ['空棋谱', { v: 1, mode: 'pvp', diff: 'easy', side: 1, moves: [], acc: 0 }],
   ['非法模式', { v: 1, mode: 'ai-ultra', diff: 'easy', side: 1, moves: [[7, 7]], acc: 0 }],
   ['非法难度', { v: 1, mode: 'pvp', diff: 'godlike', side: 1, moves: [[7, 7]], acc: 0 }],
+  ['原型难度', { v: 1, mode: 'pvp', diff: '__proto__', side: 1, moves: [[7, 7]], acc: 0 }],
+  ['数组难度', { v: 1, mode: 'pvp', diff: ['easy'], side: 1, moves: [[7, 7]], acc: 0 }],
+  ['空计时', { v: 1, mode: 'pvp', diff: 'easy', side: 1, moves: [[7, 7]], acc: null }],
+  ['数组计时', { v: 1, mode: 'pvp', diff: 'easy', side: 1, moves: [[7, 7]], acc: [5] }],
+  ['布尔计时', { v: 1, mode: 'pvp', diff: 'easy', side: 1, moves: [[7, 7]], acc: true }],
   ['非法执子', { v: 1, mode: 'pvp', diff: 'easy', side: 9, moves: [[7, 7]], acc: 0 }],
   ['坐标为小数', { v: 1, mode: 'pvp', diff: 'easy', side: 1, moves: [[7.5, 7]], acc: 0 }],
   ['坐标越界', { v: 1, mode: 'pvp', diff: 'easy', side: 1, moves: [[99, 7]], acc: 0 }],

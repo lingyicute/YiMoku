@@ -2931,19 +2931,22 @@ const store = {
   setJSON(k, v) { try { localStorage.setItem('yimoku:' + k, JSON.stringify(v)); } catch (e) {} }
 };
 
+/* localStorage 可能含有任意 JSON：避免对象强制转换抛错，也不要把原型属性当成难度。 */
+const storageNumber = v => typeof v === 'number' || typeof v === 'string' ? Number(v) : NaN;
+const validDiff = d => typeof d === 'string' && Object.prototype.hasOwnProperty.call(DIFF_NAME, d);
 function freshRecords() { return { total: 0, ai: { win: 0, lose: 0, draw: 0 }, pvp: { b: 0, w: 0, draw: 0 }, best: null }; }
 function normalizeRecords(r) {
   const d = freshRecords();
   if (!r || typeof r !== 'object') return d;
   /* 战绩来自 localStorage，可能被手改或损坏：只接受有限的非负整数，其余一律按 0 */
-  const cnt = v => { v = Math.floor(+v); return Number.isFinite(v) && v > 0 ? v : 0; };
+  const cnt = v => { v = Math.floor(storageNumber(v)); return Number.isFinite(v) && v > 0 ? v : 0; };
   d.total = cnt(r.total);
   if (r.ai && typeof r.ai === 'object') { d.ai.win = cnt(r.ai.win); d.ai.lose = cnt(r.ai.lose); d.ai.draw = cnt(r.ai.draw); }
   if (r.pvp && typeof r.pvp === 'object') { d.pvp.b = cnt(r.pvp.b); d.pvp.w = cnt(r.pvp.w); d.pvp.draw = cnt(r.pvp.draw); }
   if (r.best && typeof r.best === 'object') {
-    const mv = cnt(r.best.moves), ms = +r.best.ms;
+    const mv = cnt(r.best.moves), ms = storageNumber(r.best.ms);
     if (mv > 0 && mv <= N * N) {
-      d.best = { moves: mv, ms: Number.isFinite(ms) && ms >= 0 ? Math.round(ms) : 0, diff: DIFF_NAME[r.best.diff] ? r.best.diff : '' };
+      d.best = { moves: mv, ms: Number.isFinite(ms) && ms >= 0 ? Math.round(ms) : 0, diff: validDiff(r.best.diff) ? r.best.diff : '' };
     }
   }
   return d;
@@ -3068,7 +3071,7 @@ function loadPrefs() {
   const a = store.get('accent', null);
   if (a) document.documentElement.dataset.accent = ACCENTS.includes(a) ? a : 'purple';
   const m = store.get('mode', 'ai'); if (m === 'pvp' || m === 'ai') S.mode = m;
-  const d = store.get('diff', 'easy'); if (DIFF_NAME[d]) S.diff = d;
+  const d = store.get('diff', 'easy'); if (validDiff(d)) S.diff = d;
   const sd = store.get('side', '1'); S.side = sd === '2' ? WHITE : BLACK;
   S.sound = store.get('sound', '1') === '1';
   const r = store.getJSON('records', null);
@@ -3095,9 +3098,9 @@ function restoreSession() {
   if (!s || s.v !== 1 || !Array.isArray(s.moves) || !s.moves.length) return false;
   try {
     if (s.mode !== 'ai' && s.mode !== 'pvp') return false;
-    if (!DIFF_NAME[s.diff] || (s.side !== BLACK && s.side !== WHITE)) return false;
+    if (!validDiff(s.diff) || (s.side !== BLACK && s.side !== WHITE)) return false;
     if (s.moves.length >= N * N) return false;
-    const acc = Number(s.acc);
+    const acc = storageNumber(s.acc);
     if (!Number.isFinite(acc) || acc < 0) return false;
     const seen = new Uint8Array(N * N);
     for (const m of s.moves) {
