@@ -55,7 +55,7 @@ html{
   --asl:70%; --al:46%;               /* 浅色模式饱和度 / 亮度（克制、Material 风） */
   --sw:#A78BFA;                      /* 配色面板色块 */
   --font:"Nebulove","PingFang SC","Hiragino Sans GB","Microsoft YaHei","Source Han Sans SC",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
-  --r-lg:30px; --r-md:22px; --r-sm:14px;
+  --r-md:22px;
   --header-h:76px;
 }
 [data-accent="purple"]{--ah:254;--as:72%;--asl:40%;--al:48%;--sw:#A78BFA}
@@ -379,12 +379,6 @@ header{
   border-bottom:1px solid var(--line)}
 .recrow:last-of-type{border-bottom:0}
 .recrow b{color:var(--text); font-weight:800; font-variant-numeric:tabular-nums; text-align:right}
-.ghostbtn{
-  margin-top:10px; width:100%; border:1.5px solid var(--line); background:transparent;
-  color:var(--text2); font-family:var(--font); font-size:14.5px; font-weight:800;
-  padding:10px; border-radius:999px; cursor:pointer; transition:background .14s;
-}
-.ghostbtn:hover{background:var(--surface2)}
 
 /* ---------------- 页脚 ---------------- */
 footer{margin-top:34px; text-align:center; color:var(--text2); font-size:14.5px; line-height:2.35;
@@ -690,8 +684,7 @@ kbd{
 
 /* ---------- 基础常量 ---------- */
 const N = 15, EMPTY = 0, BLACK = 1, WHITE = 2;
-const DIRS = [[1, 0], [0, 1], [1, 1], [1, -1]];
-/* ③ 展平方向表：热点函数里 for (const [dx,dy] of DIRS) / for (const s of [1,-1])
+/* ③ 展平方向表：热点函数里 for (const [dx,dy] of [[1,0],[0,1],[1,1],[1,-1]]) / for (const s of [1,-1])
    每次调用都要分配临时数组并走迭代器协议，是每节点成本的主要来源之一。
    下面的数值循环与它们语义完全一致（已用 28k+ 随机点位对拍验证）。 */
 const DX4 = [1, 0, 1, 1], DY4 = [0, 1, 1, -1];
@@ -2962,7 +2955,7 @@ const S = {
 };
 
 let $ = id => document.getElementById(id);
-let boardEl, cellsEl = [], statusLine, statusStone, statusText, statusSub,
+let boardEl, cellsEl = [], statusStone, statusText, statusSub,
     mList, mCount, resultBar, resultText, timeVal, moveVal, undoBtn, titleSub;
 
 /* ---------- 原生 Web Audio 落子音效与震动 ---------- */
@@ -3665,7 +3658,7 @@ function onKey(e) {
 /* ---------- 初始化 ---------- */
 function init() {
   boardEl = $('board');
-  statusLine = $('statusLine'); statusStone = $('statusStone');
+  statusStone = $('statusStone');
   statusText = $('statusText'); statusSub = $('statusSub');
   mList = $('mList'); mCount = $('mCount');
   resultBar = $('resultBar'); resultText = $('resultText');
