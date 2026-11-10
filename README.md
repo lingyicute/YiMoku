@@ -42,11 +42,11 @@ Browser gomoku is usually one of two things: a board buried under banner ads, or
   - **Records per mode**: AI wins / losses / draws with win rate, PvP results by colour, and your **fastest win** (fewest moves, with time and difficulty); one click — with a confirm — wipes the slate clean.
 - **🎨 Material You & Polished Design**
   - **Dynamic theming**: eight accent hues (紫罗兰, 晴空蓝, 薄荷青, 青草绿, 暖阳黄, 落日橙, 樱花粉, 珊瑚红), each generating a complete Material token set for both modes.
-  - **Day / Night mode** with the initial choice taken from `prefers-color-scheme`, and `prefers-reduced-motion` respected.
+  - **Day / Night mode** that follows `prefers-color-scheme` (live, until you pick one yourself), with `prefers-reduced-motion` respected.
   - A result bar summarises every finished game — winner, move count and time.
 - **🔒 100% Privacy, Offline & Ad-Free**
   - **Zero network requests** — the game is fully self-contained and works with the network switched off.
-  - Theme, mode, difficulty, side and records live in `localStorage` (`yimoku:*`); nothing is ever uploaded.
+  - Theme, mode, difficulty, side, sound, records and the unfinished game live in `localStorage` (`yimoku:*`); nothing is ever uploaded.
   - Licensed under **AGPL-3.0**.
 - **⌨️ Playable Without a Mouse**
   - Arrow keys or `W A S D` move a cursor, `Space` / `Enter` places a stone, `Z` undoes, `R` restarts, `H` opens the help dialog.
@@ -94,7 +94,7 @@ Drop `index.html` on GitHub Pages, Cloudflare Pages, Netlify or any static host 
 
 - **Browser**: any modern browser (Chrome, Edge, Firefox, Safari, or their mobile counterparts).
 - **Network**: not required. Zero requests are made to any server.
-- **Storage**: `localStorage` only, for theme, settings and records.
+- **Storage**: `localStorage` only, for theme, settings, records and resuming an unfinished game.
 - **Permissions**: none.
 
 ## 🔨 Building from Source
