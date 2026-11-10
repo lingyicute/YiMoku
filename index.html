@@ -3489,13 +3489,10 @@ function restartGame() {
   cancelAI();
   S.board = makeBoard(); S.moves = []; S.over = false; S.winner = 0;
   S.started = false; S.acc = 0; S.timerRun = false; S.cursorVisible = false;
-  if (S.aiTimer) { clearTimeout(S.aiTimer); S.aiTimer = null; }
-  stopTimer(); S.acc = 0;
   markWin(null); markLast(-1);
   for (let i = 0; i < N * N; i++) { if (cellsEl[i].classList.contains('on')) paintCell(i); cellsEl[i].classList.remove('cursor', 'win', 'last'); }
   S.prevLast = -1; S.prevCursor = -1; S.lastRecordSnapshot = null;
   resultBar.classList.remove('show');
-  timeVal.textContent = '00:00';
   updateStats(); renderMoveList(); updateStatus();
   saveSession();
   if (S.mode === 'ai' && !isHuman(BLACK)) scheduleAI();   // AI 执黑则自动开局
