@@ -90,6 +90,56 @@ const clickCell = (w, d, x, y) => {
   w.dispatchEvent(new w.Event('pagehide'));
   const saved = JSON.parse(w.localStorage.getItem(KEY));
   ok('pagehide 补写计时', saved && saved.acc >= 70000, JSON.stringify(saved));
+  w.eval('S.t0 -= 2000');
+  Object.defineProperty(w.document, 'visibilityState', { value: 'hidden', configurable: true });
+  w.document.dispatchEvent(new w.Event('visibilitychange'));
+  const hidden = JSON.parse(w.localStorage.getItem(KEY));
+  ok('visibilitychange 连续补写计时', hidden && hidden.acc >= 72000, JSON.stringify(hidden));
+  close();
+}
+
+/* 2b-2) 后台标签页只能补写自己的存档，不能覆盖另一标签页的新局面或删除操作。 */
+{
+  const { w, d, close } = boot();
+  const other = JSON.stringify({ v: 1, mode: 'pvp', diff: 'easy', side: 1, moves: [[7, 7]], acc: 5000 });
+  w.localStorage.setItem(KEY, other);                  // 模拟另一标签页开始对局
+  w.dispatchEvent(new w.Event('pagehide'));
+  ok('空白标签页离开：不清除其他对局', w.localStorage.getItem(KEY) === other);
+  Object.defineProperty(d, 'visibilityState', { value: 'hidden', configurable: true });
+  d.dispatchEvent(new w.Event('visibilitychange'));
+  ok('空白标签页转入后台：不清除其他对局', w.localStorage.getItem(KEY) === other);
+  close();
+}
+{
+  const { w, d, close } = boot();
+  w.eval('setMode("pvp")');
+  for (const [x, y] of [[0, 0], [0, 1], [1, 0], [1, 1], [2, 0], [2, 1], [3, 0], [3, 1], [4, 0]]) clickCell(w, d, x, y);
+  const other = JSON.stringify({ v: 1, mode: 'pvp', diff: 'easy', side: 1, moves: [[7, 7]], acc: 5000 });
+  w.localStorage.setItem(KEY, other);                  // 终局后另一标签页开始对局
+  w.dispatchEvent(new w.Event('pagehide'));
+  ok('终局标签页离开：不清除其他对局', w.localStorage.getItem(KEY) === other);
+  close();
+}
+{
+  const first = { v: 1, mode: 'pvp', diff: 'easy', side: 1, moves: [[7, 7]], acc: 5000 };
+  const { w, d, close } = boot(first);
+  const newer = JSON.stringify({ ...first, moves: [[7, 7], [8, 8]], acc: 6000 });
+  w.localStorage.setItem(KEY, newer);                  // 模拟另一标签页继续落子
+  w.eval('S.t0 -= 5000');
+  w.dispatchEvent(new w.Event('pagehide'));
+  ok('旧标签页离开：不覆盖较新的棋谱', w.localStorage.getItem(KEY) === newer);
+  Object.defineProperty(d, 'visibilityState', { value: 'hidden', configurable: true });
+  d.dispatchEvent(new w.Event('visibilitychange'));
+  ok('旧标签页转入后台：不覆盖较新的棋谱', w.localStorage.getItem(KEY) === newer);
+  w.localStorage.removeItem(KEY);                       // 模拟另一标签页删除存档
+  w.dispatchEvent(new w.Event('pagehide'));
+  ok('旧标签页离开：不恢复已删除的存档', w.localStorage.getItem(KEY) === null);
+  clickCell(w, d, 9, 9);                              // 用户主动继续此局，可以重新写档
+  w.eval('S.t0 -= 5000');
+  w.dispatchEvent(new w.Event('pagehide'));
+  const resumed = JSON.parse(w.localStorage.getItem(KEY));
+  ok('主动落子后：重新写档并补写计时', resumed && resumed.moves.length === 2 && resumed.acc >= 15000,
+     JSON.stringify(resumed));
   close();
 }
 
