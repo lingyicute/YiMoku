@@ -178,6 +178,14 @@ const click = el => el.dispatchEvent(new window.MouseEvent('click', { bubbles: t
   assert(document.querySelectorAll('.cell.on').length === stonesBefore + 1 &&
     document.querySelector('.cell[data-x="10"][data-y="8"]').classList.contains('on1'), '空格在光标处落子');
 
+  /* ---- 光标停在已有棋子上时，不得用半透明的落子预览盖住它 ---- */
+  click(document.querySelector('[data-mode="pvp"]'));
+  kd('ArrowLeft'); kd(' ');
+  const curStone = document.querySelector('.cell.cursor.on1 .s');
+  assert(curStone && window.getComputedStyle(curStone).opacity === '1',
+    '光标下的棋子保持不透明（实际：' + (curStone && window.getComputedStyle(curStone).opacity) + '）');
+  kd('r');
+
   /* ---- 双人五连胜利渲染 ---- */
   click(document.querySelector('[data-mode="pvp"]'));
   const seq = [[0,0],[0,1],[1,0],[1,1],[2,0],[2,1],[3,0],[3,1],[4,0]];
