@@ -170,6 +170,10 @@ const click = el => el.dispatchEvent(new window.MouseEvent('click', { bubbles: t
   /* ---- 键盘操作 ---- */
   const kd = (key, target) => (target || document.body)
     .dispatchEvent(new window.KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }));
+  /* 焦点在链接上时回车归浏览器处理（跳转），不能被拦截成落子 */
+  const linkEnter = new window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true });
+  document.querySelector('footer a').dispatchEvent(linkEnter);
+  assert(!linkEnter.defaultPrevented, '链接上的回车不被拦截');
   /* 光标从 H8 移到 L9：AI 的应手只会落在 H8 两格以内，L9 必为空点 */
   kd('ArrowRight'); kd('ArrowRight'); kd('ArrowRight'); kd('ArrowDown');
   assert($('board').classList.contains('showcur'), '方向键后显示光标');
