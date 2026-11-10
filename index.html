@@ -3189,7 +3189,14 @@ function stopTimer() {
   S.acc += now() - S.t0; S.timerRun = false;
   updateTime();
 }
-function updateTime() { timeVal.textContent = fmt(elapsedMs()); }
+let lastClockText = '';
+function updateTime() {
+  /* 250ms 的刷新只为推进「秒」：同一秒内跳过重复赋值，免得白白替换文本节点、触发样式重算。 */
+  const text = fmt(elapsedMs());
+  if (text === lastClockText) return;
+  lastClockText = text;
+  timeVal.textContent = text;
+}
 
 /* ---------- 棋盘渲染 ---------- */
 function buildBoard() {
