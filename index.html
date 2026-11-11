@@ -3238,7 +3238,7 @@ function paintCell(i) {
 }
 function markLast(i) {
   if (S.prevLast >= 0) cellsEl[S.prevLast].classList.remove('last');
-  if (i >= 0) { cellsEl[i].classList.add('last'); S.prevLast = i; }
+  if (i >= 0) { cellsEl[i].classList.add('last'); S.prevLast = i; } else S.prevLast = -1;
 }
 function markWin(cells) {
   for (const i of S.winCells) cellsEl[i].classList.remove('win');
