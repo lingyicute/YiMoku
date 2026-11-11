@@ -103,13 +103,15 @@ def main():
 
     if not os.path.exists(args.html):
         sys.exit("找不到页面文件：%s" % args.html)
-    html = open(args.html, encoding="utf-8").read()
+    with open(args.html, encoding="utf-8") as f:
+        html = f.read()
     if not FONT_FACE_RE.search(html):
         sys.exit("页面里没有找到 @font-face 块，无法替换。")
 
     extra = ""
     if args.extra_chars:
-        extra = open(args.extra_chars, encoding="utf-8").read()
+        with open(args.extra_chars, encoding="utf-8") as f:
+            extra = f.read()
 
     chars = collect_chars(html, all_text=args.all_text, extra=extra)
     mode = "全文本" if args.all_text else "可渲染文本"
@@ -123,7 +125,7 @@ def main():
 
     wofl, covered = build_subset(chars, ttf)
     missing = {c for c in chars if ord(c) not in covered}
-    print("子集：%.2f KB woff2（%.1f%% 于原字体）" % (len(wofl) / 1024, len(wofl) / 1275924 * 100))
+    print("子集：%.2f KB woff2（%.1f%% 于原字体）" % (len(wofl) / 1024, len(wofl) / os.path.getsize(ttf) * 100))
     if missing:
         print("⚠️ 字体本身不含这些字符（将回退到系统字体）：%s" %
               " ".join("U+%04X" % ord(c) for c in sorted(missing)))
@@ -132,16 +134,18 @@ def main():
         print("--check：不写入页面及子集文件。")
         return
 
-    keep = os.path.join(HERE, "Nebulove-subset.woff2") 
-    open(keep, "wb").write(wofl)
+    keep = os.path.join(HERE, "Nebulove-subset.woff2")
+    with open(keep, "wb") as f:
+        f.write(wofl)
     print("子集文件：%s" % keep)
     b64 = base64.b64encode(wofl).decode("ascii")
     new_face = make_font_face(b64, len(wofl) / 1024, len(b64) / 1024, len(covered), mode)
-    new_html, n = FONT_FACE_RE.subn(new_face, html, count=1)
+    new_html, n = FONT_FACE_RE.subn(lambda _m: new_face, html, count=1)
     if new_html == html:
         print("页面已经是目标内容，未改动。")
         return
-    open(args.html, "w", encoding="utf-8").write(new_html)
+    with open(args.html, "w", encoding="utf-8", newline="") as f:
+        f.write(new_html)
     print("已更新 %s（@font-face 替换 %d 处）" % (args.html, n))
     print("页面大小：%.0f KB → %.0f KB" % (len(html.encode()) / 1024, len(new_html.encode()) / 1024))
 
