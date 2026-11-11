@@ -227,6 +227,46 @@ for (const [name, session] of bad) {
   close();
 }
 
+/* 2e) <head> 预初始化脚本：首帧前就拒绝非法配色，且白名单必须与应用层 ACCENTS 保持一致 */
+{
+  const head = html.match(/<script>([\s\S]*?)<\/script>/)[1];
+  const app = html.match(/const ACCENTS = \[([^\]]*)\]/)[1].match(/'([a-z]+)'/g).map(x => x.slice(1, -1));
+  const pre = head.match(/\[((?:'[a-z]+',?\s*)+)\]\.includes\(a\)/);
+  ok('预初始化脚本：含配色白名单', !!pre);
+  ok('预初始化脚本：白名单与应用层 ACCENTS 一致',
+     !!pre && JSON.stringify(pre[1].match(/'([a-z]+)'/g).map(x => x.slice(1, -1))) === JSON.stringify(app),
+     pre && pre[1]);
+  const preInit = stored => {
+    const dom = new JSDOM('<!DOCTYPE html><html><head><meta name="theme-color" content="#F5F3F8"></head><body></body></html>', {
+      url: 'http://localhost/', runScripts: 'outside-only',
+      beforeParse(w) { if (stored !== null) w.localStorage.setItem('yimoku:accent', stored); }
+    });
+    dom.window.eval(head);
+    const v = dom.window.document.documentElement.dataset.accent;
+    dom.window.close();
+    return v;
+  };
+  for (const a of app) ok(`预初始化脚本：合法配色 ${a} 原样保留`, preInit(a) === a, preInit(a));
+  for (const bad of ['not-a-colour', '', 'PURPLE', '__proto__', 'constructor'])
+    ok(`预初始化脚本：非法配色「${bad}」回落为紫罗兰`, preInit(bad) === 'purple', preInit(bad));
+  ok('预初始化脚本：无偏好时为紫罗兰', preInit(null) === 'purple', preInit(null));
+}
+
+/* 2f) 撤销到空盘后，上一手标记状态必须同步清空（markLast(-1) 不得残留 prevLast） */
+{
+  const { w, d, errors, close } = boot({ v: 1, mode: 'pvp', diff: 'easy', side: 1, moves: [[7, 7]], acc: 0 });
+  ok('撤销到空盘：恢复时有 1 手且有标记', moveCount(d) === 1 && d.querySelectorAll('.cell.last').length === 1);
+  w.eval('undo()');
+  ok('撤销到空盘：棋盘为空', moveCount(d) === 0 && stones(d)[0] === 0 && stones(d)[1] === 0);
+  ok('撤销到空盘：无「上一手」标记', d.querySelectorAll('.cell.last').length === 0);
+  ok('撤销到空盘：prevLast 复位为 -1', w.eval('S.prevLast') === -1, String(w.eval('S.prevLast')));
+  clickCell(w, d, 3, 3);
+  ok('撤销后再落子：标记落在新一手', d.querySelectorAll('.cell.last').length === 1 &&
+     d.querySelector('.cell[data-x="3"][data-y="3"]').classList.contains('last'));
+  ok('撤销到空盘：无脚本异常', errors.length === 0, errors.join(' | '));
+  close();
+}
+
 if (failures.length) {
   console.error('session: FAIL');
   for (const f of failures) console.error('  x ' + f);

@@ -153,6 +153,8 @@ const click = el => el.dispatchEvent(new window.MouseEvent('click', { bubbles: t
   click($('paletteBtn'));
   assert($('palettePop').classList.contains('open'), '配色面板打开');
   assert(document.querySelectorAll('.swatch').length === 8, '8 个配色');
+  assert([...document.querySelectorAll('.swatch')].every(b => (b.getAttribute('aria-label') || '').trim() !== ''),
+    '每个配色色块都有 aria-label（仅有图标，无可见文字）');
   click(document.querySelector('.swatch[data-accent="teal"]'));
   assert(document.documentElement.dataset.accent === 'teal', '切换配色为青');
   assert(!$('palettePop').classList.contains('open'), '选择后面板关闭');
