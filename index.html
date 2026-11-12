@@ -3884,13 +3884,23 @@ function init() {
   window.addEventListener('pagehide', saveSessionClock);
   document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') saveSessionClock(); });
 
-  /* 另一标签页结束对局 / 清除记录后，本页内存里的战绩副本已过期：下一次 recordResult 仍以它
-     为基数回写会把对方的结果覆盖掉。storage 事件只在其他标签页写入时触发（key 为 null 表示 clear()）。 */
+  /* 另一标签页改动偏好、结束对局或清除记录时同步本页状态（key 为 null 表示 clear()）。 */
   window.addEventListener('storage', e => {
-    if (e.key !== null && e.key !== 'yimoku:records') return;
-    S.records = normalizeRecords(store.getJSON('records', null));
-    S.lastRecordSnapshot = null;      // 快照同样过期：终局后悔棋不得再用它覆盖别页刚写入的成绩
-    renderRecords();
+    if (e.key === null || e.key === 'yimoku:theme') applyTheme(storedTheme() || systemTheme());
+    if (e.key === null || e.key === 'yimoku:accent') {
+      const a = store.get('accent', null);
+      document.documentElement.dataset.accent = ACCENTS.includes(a) ? a : 'purple';
+      syncSwatches();
+    }
+    if (e.key === null || e.key === 'yimoku:sound') {
+      S.sound = store.get('sound', '1') === '1';
+      updateSoundUI();
+    }
+    if (e.key === null || e.key === 'yimoku:records') {
+      S.records = normalizeRecords(store.getJSON('records', null));
+      S.lastRecordSnapshot = null;    // 快照同样过期：终局后悔棋不得再用它覆盖别页刚写入的成绩
+      renderRecords();
+    }
   });
 
   /* 首次访问展示玩法 */
