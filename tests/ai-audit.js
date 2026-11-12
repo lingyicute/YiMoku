@@ -181,6 +181,23 @@ for (const diff of ['easy','medium','hard','expert']) test('single centre candid
   assert.equal(e.chooseAiMove(b,diff,1).i,112);
   assert.deepEqual(b,before);
 });
+test('VCF maxLen<=0 returns null and maxLen=1 only accepts immediate five',()=>{
+  const e=engine(), b4=board([[0,0,1],[1,0,1],[2,0,1],[3,0,1]]), b3=board([[5,7,1],[6,7,1],[7,7,1]]);
+  assert.equal(e.vcfRoot(b4,1,0,0,1e6),null);
+  assert.equal(e.vcfRoot(b4,1,1,0,1e6).len,1);
+  assert.equal(e.vcfRoot(b3,1,1,0,1e6),null);
+});
+test('guard counter-four refutation probes local defence before distant corners',()=>{
+  let ticks=0;
+  const e=engine(()=>++ticks);
+  // Black just played F6 (single four -> white forced G7); white holds P8 double-four threat
+  // near bottom-right, which black refutes immediately at P8 without scanning A1..O8 first.
+  const b=board([[11,7,2],[12,7,2],[13,7,2],[14,5,2],[14,6,2],[14,8,2],
+    [1,1,2],[2,2,1],[3,3,1],[4,4,1],[5,5,1],[8,2,1],[9,3,1]]), before=b.slice();
+  assert.equal(e.oppHasVcfAfter(b,1,2,1e6,true),false);
+  assert(ticks<120, 'expected fast local refutation, got ticks='+ticks);
+  assert.deepEqual(b,before);
+});
 // Legal random positions; reject game-ending moves rather than evaluating
 // already finished boards. Verify fast/slow leaves and tactical point metadata.
 let seed=0x73a19d4;
