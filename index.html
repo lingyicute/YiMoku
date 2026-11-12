@@ -3637,6 +3637,7 @@ function openModal(id) {
     let ret = document.activeElement;
     const pop = ret && ret.closest ? ret.closest('.popover') : null;
     if (pop) ret = $(POP_BTN[pop.id]);
+    if (ret && ret.closest && ret.closest('.modal')) ret = null;
     modalReturn = ret && ret !== document.body ? ret : null;
   }
   closePop();
@@ -3647,10 +3648,12 @@ function openModal(id) {
   if (first) first.focus();
 }
 function closeModal(id) {
-  $(id).classList.remove('open');
-  if (!anyModalOpen() && modalReturn) {
+  const m = $(id);
+  m.classList.remove('open');
+  if (!anyModalOpen()) {
     const el = modalReturn; modalReturn = null;
-    if (document.contains(el)) el.focus();
+    if (el && document.contains(el)) el.focus();
+    else if (m.contains(document.activeElement)) document.activeElement.blur();
   }
 }
 function anyModalOpen() { return !!document.querySelector('.modal.open'); }
