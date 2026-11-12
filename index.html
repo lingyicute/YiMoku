@@ -3825,9 +3825,13 @@ function init() {
   document.querySelectorAll('[data-side]').forEach(b => b.addEventListener('click', () => setSide(+b.dataset.side)));
 
   /* 棋盘点击 */
+  boardEl.addEventListener('pointerdown', () => {
+    if (S.cursorVisible) { S.cursorVisible = false; syncBoardState(); }
+  });
   boardEl.addEventListener('click', e => {
     const c = e.target.closest('.cell');
     if (!c) return;
+    if (e.detail > 0) S.cursorVisible = false;
     S.cursor.x = +c.dataset.x; S.cursor.y = +c.dataset.y;
     tryPlace(S.cursor.x, S.cursor.y);
     syncBoardState();
