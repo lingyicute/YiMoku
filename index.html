@@ -12,21 +12,21 @@
 <script>
 /* 主题 / 配色预初始化，避免闪白 */
 (function () {
+  var t = null, a = null;
   try {
-    var t = localStorage.getItem('yimoku:theme');
-    var a = localStorage.getItem('yimoku:accent');
-    if (t !== 'light' && t !== 'dark') {
-      t = (window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches) ? 'dark' : 'light';
-    }
-    document.documentElement.dataset.theme = t;
-    document.documentElement.dataset.accent = ['purple','blue','teal','green','yellow','orange','pink','red'].includes(a) ? a : 'purple';
-    /* theme-color 同步提前到首帧之前，深色下地址栏不先闪一下浅色（颜色与应用层 THEME_COLOR 一致） */
-    var m = document.querySelector('meta[name="theme-color"]');
-    if (m && t === 'dark') m.setAttribute('content', '#100D16');
-  } catch (e) {
-    document.documentElement.dataset.theme = 'light';
-    document.documentElement.dataset.accent = 'purple';
+    t = localStorage.getItem('yimoku:theme');
+    a = localStorage.getItem('yimoku:accent');
+  } catch (e) {}
+  if (t !== 'light' && t !== 'dark') {
+    var dark = false;
+    try { dark = !!(window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches); } catch (e) {}
+    t = dark ? 'dark' : 'light';
   }
+  document.documentElement.dataset.theme = t;
+  document.documentElement.dataset.accent = ['purple','blue','teal','green','yellow','orange','pink','red'].includes(a) ? a : 'purple';
+  /* theme-color 同步提前到首帧之前，深色下地址栏不先闪一下浅色（颜色与应用层 THEME_COLOR 一致） */
+  var m = document.querySelector('meta[name="theme-color"]');
+  if (m && t === 'dark') m.setAttribute('content', '#100D16');
 })();
 </script>
 <style>
@@ -3094,7 +3094,7 @@ function watchSystemTheme() {
 function loadPrefs() {
   applyTheme(storedTheme() || systemTheme());
   const a = store.get('accent', null);
-  if (a) document.documentElement.dataset.accent = ACCENTS.includes(a) ? a : 'purple';
+  document.documentElement.dataset.accent = ACCENTS.includes(a) ? a : 'purple';
   const m = store.get('mode', 'ai'); if (m === 'pvp' || m === 'ai') S.mode = m;
   const d = store.get('diff', 'easy'); if (validDiff(d)) S.diff = d;
   const sd = store.get('side', '1'); S.side = sd === '2' ? WHITE : BLACK;
