@@ -465,6 +465,120 @@ const click = el => el.dispatchEvent(new window.MouseEvent('click', { bubbles: t
     f.close();
   }
 
+  /* ---- 模态关闭不滞留焦点，且无归还目标时跨模态切换不指向已关闭模态内部 ---- */
+  {
+    document.activeElement.blur();
+    window.eval('openModal("modalHelp")');
+    assert(document.activeElement === $('helpOk'), '打开说明后聚焦「知道了」');
+    click($('helpOk'));
+    assert(!$('modalHelp').contains(document.activeElement), '无归还目标关闭模态后焦点必须移出隐藏模态');
+    window.eval('openModal("modalRecords")');
+    $('recClear').focus();
+    click($('recClear'));
+    assert($('modalClear').classList.contains('open') && !$('modalRecords').classList.contains('open'), '切至清除确认框');
+    click($('clearCancel'));
+    assert(!$('modalRecords').contains(document.activeElement) && !$('modalClear').contains(document.activeElement),
+      '确认框关闭后焦点不得回到已关闭的成绩弹窗内部');
+  }
+
+  /* ---- 指针点击棋盘清除键盘光标环 ---- */
+  {
+    window.eval('setMode("pvp"); restartGame();');
+    kd('ArrowRight');
+    assert($('board').classList.contains('showcur'), '方向键唤出键盘光标');
+    const c33 = document.querySelector('.cell[data-x="3"][data-y="3"]');
+    c33.dispatchEvent(new window.MouseEvent('click', { bubbles: true, detail: 1 }));
+    assert(!$('board').classList.contains('showcur') && !c33.classList.contains('cursor'),
+      '鼠标/触屏点击落子后应隐藏键盘光标环');
+    kd('ArrowLeft');
+    assert($('board').classList.contains('showcur'), '再次按方向键重新显示光标');
+    $('board').dispatchEvent(new window.Event('pointerdown', { bubbles: true }));
+    assert(!$('board').classList.contains('showcur'), 'pointerdown 立即收起键盘光标环');
+  }
+
+  /* ---- 弹层内方向键导航、外部链接点击拦截、快捷键修饰键与长按防重 ---- */
+  {
+    window.eval('setMode("pvp"); restartGame();');
+    click($('menuBtn'));
+    assert(document.activeElement === $('mSound'), '打开菜单聚焦首项');
+    key('ArrowDown');
+    assert(document.activeElement === $('mHelp'), '菜单 ArrowDown 移至下一项');
+    key('End');
+    assert(document.activeElement === $('mClear'), '菜单 End 移至末项');
+    key('Home');
+    assert(document.activeElement === $('mSound'), '菜单 Home 回到首项');
+    const outLinkClick = new window.MouseEvent('click', { bubbles: true, cancelable: true });
+    document.querySelector('footer a').dispatchEvent(outLinkClick);
+    assert(outLinkClick.defaultPrevented && !$('menuPop').classList.contains('open'),
+      '弹层打开时点击外部链接只关闭弹层并阻止默认跳转');
+
+    click($('paletteBtn'));
+    const sw = [...document.querySelectorAll('.swatch')];
+    sw[0].focus();
+    key('ArrowDown');
+    assert(document.activeElement === sw[4], '配色面板 ArrowDown 按 4 列跳到下一行');
+    key('Escape');
+
+    click(document.querySelector('.cell[data-x="7"][data-y="7"]'));
+    click(document.querySelector('.cell[data-x="8"][data-y="8"]'));
+    assert(document.querySelectorAll('.cell.on').length === 2, '快捷键测试前提：2 子');
+    key('z', { ctrlKey: true, shiftKey: true });
+    assert(document.querySelectorAll('.cell.on').length === 2, 'Ctrl+Shift+Z（重做）不得触发悔棋');
+    key('z', { repeat: true });
+    assert(document.querySelectorAll('.cell.on').length === 2, '长按 Z 自动连发不得连续悔棋');
+    key('r', { repeat: true });
+    assert(document.querySelectorAll('.cell.on').length === 2, '长按 R 自动连发不得反复重开');
+    const hEv = new window.KeyboardEvent('keydown', { key: 'h', bubbles: true, cancelable: true });
+    document.body.dispatchEvent(hEv);
+    assert(hEv.defaultPrevented && $('modalHelp').classList.contains('open'), 'H 键打开说明并阻止浏览器默认快搜');
+    click($('helpOk'));
+  }
+
+  /* ---- 终局 70ms 内悔棋/重开取消胜利庆祝定时器 + 挂起音频恢复拒绝静默处理 ---- */
+  {
+    let vibrateWin = 0;
+    const origVib = window.navigator.vibrate;
+    window.navigator.vibrate = pat => { if (Array.isArray(pat)) vibrateWin++; return true; };
+    let unhandled = 0;
+    const origAC = window.AudioContext;
+    window.AudioContext = class {
+      constructor() { this.state = 'suspended'; this.currentTime = 0; this.sampleRate = 8000; this.destination = {}; }
+      resume() { return Promise.reject(new Error('NotAllowedError')).catch(e => { throw e; }); }
+      createBuffer() { return { getChannelData: () => new Float32Array(56) }; }
+      createBufferSource() { return { connect() {}, start() {} }; }
+      createBiquadFilter() { return { frequency: { setValueAtTime() {} }, Q: { setValueAtTime() {} }, connect() {} }; }
+      createGain() { return { gain: { setValueAtTime() {}, exponentialRampToValueAtTime() {} }, connect() {} }; }
+      createOscillator() { return { frequency: { setValueAtTime() {} }, connect() {}, start() {}, stop() {} }; }
+    };
+    const onRej = () => { unhandled++; };
+    process.on('unhandledRejection', onRej);
+    window.eval('audioCtx = null; S.sound = true; setMode("pvp"); restartGame();');
+    for (const [x, y] of [[0,0],[0,1],[1,0],[1,1],[2,0],[2,1],[3,0],[3,1],[4,0]]) {
+      click(document.querySelector(`.cell[data-x="${x}"][data-y="${y}"]`));
+    }
+    window.eval('undo()');
+    await sleep(110);
+    assert(vibrateWin === 0, '终局后立即悔棋应取消延迟的胜利震动/音效（实际触发：' + vibrateWin + '）');
+    assert(unhandled === 0, 'AudioContext.resume() 被策略拒绝时不得产生未捕获 Promise 拒绝');
+    process.off('unhandledRejection', onRej);
+    window.AudioContext = origAC;
+    window.navigator.vibrate = origVib;
+  }
+
+  /* ---- 跨标签页 storage 事件同步主题、配色与音效 ---- */
+  {
+    window.localStorage.setItem('yimoku:theme', 'light');
+    window.dispatchEvent(new window.StorageEvent('storage', { key: 'yimoku:theme' }));
+    assert(document.documentElement.dataset.theme === 'light', 'storage 同步浅色主题');
+    window.localStorage.setItem('yimoku:accent', 'orange');
+    window.dispatchEvent(new window.StorageEvent('storage', { key: 'yimoku:accent' }));
+    assert(document.documentElement.dataset.accent === 'orange' &&
+      document.querySelector('.swatch[data-accent="orange"]').classList.contains('on'), 'storage 同步配色与色块状态');
+    window.localStorage.setItem('yimoku:sound', '0');
+    window.dispatchEvent(new window.StorageEvent('storage', { key: 'yimoku:sound' }));
+    assert($('soundText').textContent === '落子音效：关', 'storage 同步音效开关');
+  }
+
   console.log('tests/smoke.js: PASS');
   process.exit(0);
 })().catch(e => { console.error('FAIL (exception):', e); process.exit(1); });

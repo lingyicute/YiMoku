@@ -250,6 +250,22 @@ for (const [name, session] of bad) {
   for (const bad of ['not-a-colour', '', 'PURPLE', '__proto__', 'constructor'])
     ok(`预初始化脚本：非法配色「${bad}」回落为紫罗兰`, preInit(bad) === 'purple', preInit(bad));
   ok('预初始化脚本：无偏好时为紫罗兰', preInit(null) === 'purple', preInit(null));
+  {
+    const dom = new JSDOM('<!DOCTYPE html><html><head><meta name="theme-color" content="#F5F3F8"></head><body></body></html>', {
+      url: 'http://localhost/', runScripts: 'outside-only',
+      beforeParse(w) {
+        Object.defineProperty(w, 'localStorage', { get() { throw new Error('SecurityError'); } });
+        w.matchMedia = q => ({ matches: q.includes('dark') });
+      }
+    });
+    dom.window.eval(head);
+    const root = dom.window.document.documentElement;
+    const meta = dom.window.document.querySelector('meta[name="theme-color"]');
+    ok('预初始化脚本：localStorage 抛错时仍跟随系统深色', root.dataset.theme === 'dark', root.dataset.theme);
+    ok('预初始化脚本：localStorage 抛错时深色同步 theme-color', meta.getAttribute('content') === '#100D16', meta.getAttribute('content'));
+    ok('预初始化脚本：localStorage 抛错时配色回落紫罗兰', root.dataset.accent === 'purple', root.dataset.accent);
+    dom.window.close();
+  }
 }
 
 /* 2f) 撤销到空盘后，上一手标记状态必须同步清空（markLast(-1) 不得残留 prevLast） */
