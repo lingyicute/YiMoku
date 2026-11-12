@@ -10,7 +10,7 @@ Nebulove 字体子集化 & 内嵌
   python3 scripts/subset_font.py --all-text          # 保守模式：文件里出现的字符全收
   python3 scripts/subset_font.py --extra-chars glyphs.txt
 """
-import argparse, base64, io, os, re, sys, urllib.request
+import argparse, base64, io, os, re, sys, tempfile, urllib.request
 FONT_URL = "https://raw.githubusercontent.com/lingyicute/Nebulove/main/Nebulove.woff2"
 # 不再写入远程地址
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -21,25 +21,24 @@ PUNCT = set("：，。！？；‘’“”（）【】—…·《》×＝÷＋�
 # 同时吃掉由本脚本生成的注释块，否则每次重跑都会在文件里多插一份注释
 GEN_COMMENT_RE = r'/\* ===== Nebulove 子集（内嵌，离线可用）=====.*?===== \*/\s*'
 FONT_FACE_RE = re.compile(r'(?:' + GEN_COMMENT_RE + r')?@font-face\s*\{[^}]*\}', re.S)
+JS_TOKEN_RE = re.compile(
+    r'''("(?:\\.|[^"\\\r\n])*"|'(?:\\.|[^'\\\r\n])*'|`(?:\\.|[^`\\])*`)|/\*.*?\*/|//[^\r\n]*''',
+    re.S,
+)
 
 
 def strip_non_render_text(html):
     """剔除所有用户不可见的字符：
     1. HTML 注释 <!-- ... -->
     2. <style> 样式标签全部内容
-    3. <script> 中的块注释与行注释（含单独成行及代码尾部行注释）
+    3. <script> 中的块注释与行注释（保留字符串/模板字面量中的 // 与 /*）
     """
     html = re.sub(r'<!--.*?-->', '', html, flags=re.S)
     html = re.sub(r'<style\b[^>]*>.*?</style>', '', html, flags=re.S | re.I)
 
     def _js(m):
-        code = m.group(1)
         # 自检断言体已移至 tests/selftest-core.js，产品页面不再含 Node-only 文本
-        # 剔除块注释
-        code = re.sub(r'/\*.*?\*/', ' ', code, flags=re.S)
-        # 剔除行尾及整行注释 // ...
-        code = re.sub(r'//.*$', ' ', code, flags=re.M)
-        return code
+        return JS_TOKEN_RE.sub(lambda t: t.group(1) or ' ', m.group(1))
 
     return re.sub(r'<script\b[^>]*>(.*?)</script>', _js, html, flags=re.S | re.I)
 
@@ -60,15 +59,15 @@ def build_subset(chars, ttf_path):
     from fontTools.ttLib import TTFont
     from fontTools.subset import Subsetter, Options
 
-    font = TTFont(ttf_path, recalcTimestamp=False)   # 不写 head.modified，保证同样输入 → 同样字节
-    subsetter = Subsetter(options=Options())
-    subsetter.populate(text="".join(sorted(chars)))
-    subsetter.subset(font)
-    font.flavor = "woff2"
-    buf = io.BytesIO()
-    font.save(buf)
-    data = buf.getvalue()
-    covered = set(font.getBestCmap().keys())
+    with TTFont(ttf_path, recalcTimestamp=False) as font:   # 不写 head.modified，保证同样输入 → 同样字节
+        subsetter = Subsetter(options=Options())
+        subsetter.populate(text="".join(sorted(chars)))
+        subsetter.subset(font)
+        font.flavor = "woff2"
+        buf = io.BytesIO()
+        font.save(buf)
+        data = buf.getvalue()
+        covered = set(font.getBestCmap().keys())
     return data, covered
 
 
@@ -117,15 +116,17 @@ def main():
     mode = "全文本" if args.all_text else "可渲染文本"
     print("需要保留的字符：%d 个（%s）" % (len(chars), mode))
 
-    ttf = args.ttf or "/tmp/Nebulove.woff2"
-    if not args.ttf:
-        print("下载完整字体：%s" % args.font_url)
-        download(args.font_url, ttf)
-    print("完整字体：%.0f KB（%s）" % (os.path.getsize(ttf) / 1024, os.path.basename(ttf)))
+    with tempfile.TemporaryDirectory() as tmpdir:
+        ttf = args.ttf or os.path.join(tmpdir, "Nebulove.woff2")
+        if not args.ttf:
+            print("下载完整字体：%s" % args.font_url)
+            download(args.font_url, ttf)
+        ttf_size = os.path.getsize(ttf)
+        print("完整字体：%.0f KB（%s）" % (ttf_size / 1024, os.path.basename(ttf)))
 
-    wofl, covered = build_subset(chars, ttf)
+        wofl, covered = build_subset(chars, ttf)
     missing = {c for c in chars if ord(c) not in covered}
-    print("子集：%.2f KB woff2（%.1f%% 于原字体）" % (len(wofl) / 1024, len(wofl) / os.path.getsize(ttf) * 100))
+    print("子集：%.2f KB woff2（%.1f%% 于原字体）" % (len(wofl) / 1024, len(wofl) / ttf_size * 100))
     if missing:
         print("⚠️ 字体本身不含这些字符（将回退到系统字体）：%s" %
               " ".join("U+%04X" % ord(c) for c in sorted(missing)))
