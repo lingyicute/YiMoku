@@ -2972,14 +2972,24 @@ let boardEl, cellsEl = [], statusStone, statusText, statusSub,
     mList, mCount, resultBar, resultText, timeVal, moveVal, undoBtn, titleSub;
 
 /* ---------- 原生 Web Audio 落子音效与震动 ---------- */
-let audioCtx = null;
+let audioCtx = null, winTimer = null;
+function clearWinTimer() {
+  if (winTimer !== null) { clearTimeout(winTimer); winTimer = null; }
+}
+function ensureAudio() {
+  const AudioCtor = window.AudioContext || window.webkitAudioContext;
+  if (!AudioCtor) return null;
+  if (!audioCtx) audioCtx = new AudioCtor();
+  if (audioCtx.state === 'suspended') {
+    const p = audioCtx.resume();
+    if (p && typeof p.catch === 'function') p.catch(() => {});
+  }
+  return audioCtx;
+}
 function playStoneSound(isWhite) {
   if (!S.sound) return;
   try {
-    const AudioCtor = window.AudioContext || window.webkitAudioContext;
-    if (!AudioCtor) return;
-    if (!audioCtx) audioCtx = new AudioCtor();
-    if (audioCtx.state === 'suspended') audioCtx.resume();
+    if (!ensureAudio()) return;
     const t = audioCtx.currentTime;
 
     // 1. 碰撞瞬态（Click）：极短带通噪声脉冲（约 7ms），营造清脆利落的“哒/啪”声
@@ -3025,10 +3035,7 @@ function playStoneSound(isWhite) {
 function playWinSound() {
   if (!S.sound) return;
   try {
-    const AudioCtor = window.AudioContext || window.webkitAudioContext;
-    if (!AudioCtor) return;
-    if (!audioCtx) audioCtx = new AudioCtor();
-    if (audioCtx.state === 'suspended') audioCtx.resume();
+    if (!ensureAudio()) return;
     const t = audioCtx.currentTime;
     // 轻快明亮的连音（大三和弦 523Hz C5 -> 659Hz E5 -> 784Hz G5 -> 1046Hz C6）
     const notes = [523.25, 659.25, 783.99, 1046.5];
@@ -3402,6 +3409,7 @@ function doMove(x, y) {
   return true;
 }
 function endGame(winner, cells) {
+  clearWinTimer();
   S.over = true; S.winner = winner; stopTimer();
   if (cells) {
     markWin(cells);
@@ -3409,7 +3417,7 @@ function endGame(winner, cells) {
     // 人机模式下玩家胜 或 双人模式下获胜，播放胜利庆祝音与震动节律
     const isHumanWin = (S.mode === 'pvp') || (winner === S.side);
     if (isHumanWin) {
-      setTimeout(() => { triggerHaptic('win'); playWinSound(); }, 70);
+      winTimer = setTimeout(() => { winTimer = null; triggerHaptic('win'); playWinSound(); }, 70);
     } else {
       triggerHaptic('move');
     }
@@ -3549,6 +3557,7 @@ function undo() {
   if (!S.moves.length) return;
   if (S.mode === 'ai' && S.side === WHITE && S.moves.length === 1) return; // AI 先行的首手不可撤
   cancelAI();
+  clearWinTimer();
   clearMoveFlash();
   const wasOver = S.over;
   let n = 1;
@@ -3576,6 +3585,7 @@ function undo() {
 }
 function restartGame() {
   cancelAI();
+  clearWinTimer();
   clearMoveFlash();
   S.board = makeBoard(); S.moves = []; S.over = false; S.winner = 0;
   S.started = false; S.acc = 0; S.timerRun = false; S.cursorVisible = false;
