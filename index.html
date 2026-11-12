@@ -1488,6 +1488,7 @@ function vcfAnswer(b, atk, maxLen, m0, m1, mn) {
 /* 根：在已找到的杀线中优先较短的一手；null 仅表示未证明，不表示无杀。
    子树按首个成功分支返回，因此这里不保证全局最短杀。 */
 function vcfRoot(b, atk, maxLen, t0, budget, preScored) {
+  if (maxLen < 1) return null;
   vcfBudget = VCF_CAP; vcfT0 = t0; vcfDeadline = budget;
   /* ㉖ 修复：进攻方自身已有连五点时，下一手即胜，必须先判胜（旧版先看防方连五点，
      会把「轮到攻方、攻方已能成五」误判为无杀，送杀闸门因此漏判）。 */
@@ -1495,7 +1496,7 @@ function vcfRoot(b, atk, maxLen, t0, budget, preScored) {
   if (fiveThreatCount(b, atk, 1, ownFive) > 0) return { i: ownFive[0], x: ownFive[0] % N, y: (ownFive[0] / N) | 0, len: 1 };
   const def = other(atk);
   if (fiveThreatCount(b, def, 1) > 0) return null;    // 防方已有连五点：先解杀要紧
-  if (vcfStopped()) return null;
+  if (maxLen <= 1 || vcfStopped()) return null;
   let sc = preScored;
   if (!sc) {
     const cl = candidateList(b, 2);
@@ -2855,31 +2856,48 @@ function oppHasVcfAfter(b, ai, opp, ms, checkAfterSingleFour) {
   const left = deadline - now();
   return left > 0 && oppHasKillWithin(b, opp, left);
 }
+const GUARD_BLK = new Int32Array(1);
+const GUARD_SEEN = new Uint8Array(N * N);
 function lostAfterEveryReply(b, ai, opp, deadline) {
   if (fiveThreatCount(b, ai, 1) > 0) return false;
-  const oppFive = fiveThreatCount(b, opp, 1);
-  if (!oppFive) {
-    if (openThreeCount(b, ai, 1) > 0) return false;
-    // Cheap winning counterexamples before the expensive universal check.
-    for (let i = 0; i < N * N; i++) {
-      if (!b[i] && pointTier(b, i % N, (i / N) | 0, ai) >= T.OFOUR) return false;
-    }
-  }
-  let replies = 0;
-  for (let i = 0; i < N * N; i++) {
-    if (b[i]) continue;
+  const oppFive = fiveThreatCount(b, opp, 2, GUARD_BLK);
+  if (oppFive >= 2) return deadline - now() > 0;
+  if (oppFive === 1) {
     const left = deadline - now();
     if (left <= 0) return false;
-    replies++;
+    const only = GUARD_BLK[0];
+    b[only] = ai;
+    try { return oppHasVcfAfter(b, ai, opp, left, false); }
+    finally { b[only] = EMPTY; }
+  }
+  if (openThreeCount(b, ai, 1) > 0) return false;
+  // Cheap winning counterexamples before the expensive universal check.
+  for (let i = 0; i < N * N; i++) {
+    if (!b[i] && pointTier(b, i % N, (i / N) | 0, ai) >= T.OFOUR) return false;
+  }
+  // Probe tactical/defensive neighbours ahead of passive intersections so
+  // refutations fail fast instead of burning the guard budget from A1 onward.
+  const local = candidateList(b, 2).map(i => scoreCell(b, i % N, (i / N) | 0, ai));
+  local.sort((a, c) => c.s - a.s);
+  GUARD_SEEN.fill(0);
+  const order = [];
+  for (let q = 0; q < local.length; q++) {
+    const i = local[q].i;
+    if (!b[i]) { GUARD_SEEN[i] = 1; order.push(i); }
+  }
+  for (let i = 0; i < N * N; i++) if (!b[i] && !GUARD_SEEN[i]) order.push(i);
+  if (!order.length) return false; // a full board is a draw
+  for (let q = 0; q < order.length; q++) {
+    const left = deadline - now();
+    if (left <= 0) return false;
+    const i = order[q];
     b[i] = ai;
     let lost;
-    try {
-      lost = !makesFive(b, i % N, (i / N) | 0) &&
-             oppHasVcfAfter(b, ai, opp, left, false);
-    } finally { b[i] = EMPTY; }
+    try { lost = oppHasVcfAfter(b, ai, opp, left, false); }
+    finally { b[i] = EMPTY; }
     if (!lost) return false; // one unproved reply refutes the loss certificate
   }
-  return replies > 0; // a full board is a draw
+  return true;
 }
 /* ㉕ 在同一份 ms 预算里依次问 VCF、VCT：VCF 找不到不等于安全——「三→活四→五」
    这类三起手强制胜只有 VCT 能证明（vctRoot 自带「我方已有连五点则先解杀要紧」
