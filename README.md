@@ -9,7 +9,7 @@ Made with ❤️ by [lingyicute](https://github.com/lingyicute).
 [🇺🇸 English] • [🌐 Source Code](https://github.com/lingyicute/YiMoku) • [🐛 Report Bug](https://github.com/lingyicute/YiMoku/issues)
 
 [![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0-orange.svg)](https://github.com/lingyicute/YiMoku/blob/main/LICENSE)
-[![Single File ~225 KiB](https://img.shields.io/badge/Single%20File-~225%20KiB-blue)](https://github.com/lingyicute/YiMoku/blob/main/index.html)
+[![Single File ~235 KiB](https://img.shields.io/badge/Single%20File-~235%20KiB-blue)](https://github.com/lingyicute/YiMoku/blob/main/index.html)
 [![Zero Dependencies](https://img.shields.io/badge/Dependencies-Zero-brightgreen)](https://github.com/lingyicute/YiMoku)
 [![No Ads No Tracking](https://img.shields.io/badge/Ads%20%26%20Trackers-Zero-brightgreen)](https://github.com/lingyicute/YiMoku)
 [![GitHub Stars](https://img.shields.io/github/stars/lingyicute/YiMoku?style=flat&color=yellow)](https://github.com/lingyicute/YiMoku)
@@ -129,9 +129,9 @@ The shipped artifact stays exactly as it is — one zero-dependency HTML file. E
 
 ```
 npm install          # dev dependencies (jsdom only)
-npm test             # offline/worker contract + engine self-test + AI regressions + DOM smoke  (~15 s)
+npm test             # offline/worker contract + engine self-test + AI regressions + DOM smoke + session resume  (~20 s)
 npm run test:fuzz     # equivalence fuzzing & TT consistency                      (~10 s)
-npm run test:session  # localStorage resume / corrupt-save regressions            (~3 s)
+npm run test:session  # localStorage resume / corrupt-save regressions (also part of npm test)  (~3 s)
 npm run test:bench    # AI strength & latency benchmark                           (~1–2 min)
 ```
 

@@ -980,7 +980,7 @@ function candidateList(b, radius) {
            任何棋子，于是 r1=r2=g1=g2=0、run=1、gapLen=1：棋型最高只可能是
            TWO，既做不出冲四/活三，也不可能是必挡点。
            实测（600 局随机面）：半径-2 候选数 −17.7%，被剔除的 5.6 万个格子
-           中 tier≥THREE 的有 0 个（见 tests/verify_linecand.js）。 */
+           中 tier≥THREE 的有 0 个（一次性验证脚本，未随仓库发布）。 */
         const x0 = x > 0 ? x - 1 : 0, x1 = x < N - 1 ? x + 1 : N - 1;
         const y0 = y > 0 ? y - 1 : 0, y1 = y < N - 1 ? y + 1 : N - 1;
         for (let ny = y0; ny <= y1; ny++) {
