@@ -3551,12 +3551,35 @@ function scheduleAI() {
         worker.postMessage({ id: currentReq, type: 'chooseMove', board: boardCopy, diff: diff, aiP: p });
       } catch (e) { failAiWorker(worker); }
     } else {
-      const mv = chooseAiMove(boardCopy, diff, p);
+      const mv = safeAiMove(boardCopy, diff, p);
       if (currentReq !== S.aiReqId) return;
       S.aiThinking = false;
-      if (mv) doMove(mv.x, mv.y);
+      if (mv) doMove(mv.x, mv.y); else updateStatus();
     }
   }, delay);
+}
+/* 引擎异常兜底：chooseAiMove 一旦抛错（例如低内存设备上 ~10MB 置换表分配失败、
+   或 Worker 失败后回退主线程时再次出错），旧逻辑会让 aiThinking 永远为 true——
+   状态卡停在「思考中」，棋盘再也点不动，只有悔棋/重开能解。
+   这里依次退回：贪心单步评分（中等难度的无扰动版）→ 离中心最近的空点，
+   无论如何都给出一手合法着法，让对局继续。 */
+function safeAiMove(board, diff, p) {
+  try { const mv = chooseAiMove(board, diff, p); if (mv) return mv; } catch (e) {}
+  let best = null;
+  try {
+    for (const i of candidateList(board)) {
+      const c = scoreCell(board, i % N, (i / N) | 0, p);
+      if (!best || c.s > best.s) best = c;
+    }
+  } catch (e) { best = null; }
+  if (best) return best;
+  let pick = -1, bestD = Infinity;
+  for (let i = 0; i < N * N; i++) {
+    if (board[i]) continue;
+    const d = Math.abs(i % N - 7) + Math.abs(((i / N) | 0) - 7);
+    if (d < bestD) { bestD = d; pick = i; }
+  }
+  return pick < 0 ? null : { x: pick % N, y: (pick / N) | 0, i: pick };
 }
 function tryPlace(x, y) {
   if (S.over || S.aiThinking) return;

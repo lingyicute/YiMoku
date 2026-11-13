@@ -579,6 +579,29 @@ const click = el => el.dispatchEvent(new window.MouseEvent('click', { bubbles: t
     assert($('soundText').textContent === '落子音效：关', 'storage 同步音效开关');
   }
 
+  /* ---- 引擎抛错兜底：AI 仍要落下一手合法棋，不能让 aiThinking 卡死棋盘 ---- */
+  {
+    window.eval('setMode("ai"); setSide(1); setDiff("easy"); restartGame();');
+    const realChoose = window.eval('chooseAiMove');
+    window.eval('chooseAiMove = function () { throw new Error("engine boom"); };');
+    click(document.querySelector('.cell[data-x="7"][data-y="7"]'));
+    assert(window.eval('S.aiThinking') === true, '人类落子后 AI 进入思考态');
+    await sleep(400);
+    assert(window.eval('S.aiThinking') === false, '引擎抛错后 aiThinking 必须复位');
+    assert(window.eval('S.moves.length') === 2, '引擎抛错后 AI 仍应落下一手（实际手数：' + window.eval('S.moves.length') + '）');
+    assert(window.eval('S.moves[1].p') === 2 && window.eval('S.board[S.moves[1].i]') === 2, '兜底着法必须是白方的合法落点');
+    assert(/轮到你/.test($('statusText').textContent), '兜底落子后状态卡回到玩家回合（实际：' + $('statusText').textContent + '）');
+    /* 单步评分也不可用时，退回离中心最近的空点 */
+    const realScore = window.eval('scoreCell');
+    window.eval('scoreCell = function () { throw new Error("score boom"); };');
+    click(document.querySelector('.cell[data-x="0"][data-y="0"]'));
+    await sleep(400);
+    assert(window.eval('S.moves.length') === 4 && window.eval('S.aiThinking') === false, '评分函数同样失效时仍要落子且复位思考态');
+    window.scoreCell = realScore; window.chooseAiMove = realChoose;
+    assert(window.eval('chooseAiMove') === realChoose && window.eval('scoreCell') === realScore, '测试结束后应恢复原引擎函数');
+    window.eval('restartGame()');
+  }
+
   console.log('tests/smoke.js: PASS');
   process.exit(0);
 })().catch(e => { console.error('FAIL (exception):', e); process.exit(1); });
