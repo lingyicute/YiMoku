@@ -162,8 +162,11 @@ const click = el => el.dispatchEvent(new window.MouseEvent('click', { bubbles: t
   /* ---- 菜单与弹窗 ---- */
   click($('menuBtn'));
   assert($('soundText').textContent === '落子音效：开', '默认音效开');
+  assert($('mSound').getAttribute('role') === 'menuitemcheckbox' && $('mSound').getAttribute('aria-checked') === 'true',
+    '音效开关应为 menuitemcheckbox 且初始 aria-checked=true');
   click($('mSound'));
   assert($('soundText').textContent === '落子音效：关', '切换音效关');
+  assert($('mSound').getAttribute('aria-checked') === 'false', '音效关时 aria-checked=false');
   assert(window.localStorage.getItem('yimoku:sound') === '0', '持久化音效关闭');
   click($('mSound'));
   assert($('soundText').textContent === '落子音效：开', '切回音效开');
@@ -577,6 +580,7 @@ const click = el => el.dispatchEvent(new window.MouseEvent('click', { bubbles: t
     window.localStorage.setItem('yimoku:sound', '0');
     window.dispatchEvent(new window.StorageEvent('storage', { key: 'yimoku:sound' }));
     assert($('soundText').textContent === '落子音效：关', 'storage 同步音效开关');
+    assert($('mSound').getAttribute('aria-checked') === 'false', 'storage 同步后 aria-checked 一并更新');
   }
 
   /* ---- 引擎抛错兜底：AI 仍要落下一手合法棋，不能让 aiThinking 卡死棋盘 ---- */
