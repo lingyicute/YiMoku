@@ -114,7 +114,7 @@ cd YiMoku
 
 ### Regenerating the embedded font subset
 
-The page embeds a ~35.6 KB subset (308 glyphs) of the 1.25 MB "Nebulove" typeface instead of linking it from a CDN, which is what keeps the "zero network requests" promise. When you add or change **user-visible text**, regenerate the subset — otherwise the new characters are simply not in the font and fall back to a system font:
+The page embeds a ~35.6 KB subset (308 glyphs) of the ~1.22 MB "Nebulove" typeface instead of linking it from a CDN, which is what keeps the "zero network requests" promise. When you add or change **user-visible text**, regenerate the subset — otherwise the new characters are simply not in the font and fall back to a system font:
 
 ```
 pip install fonttools brotli
