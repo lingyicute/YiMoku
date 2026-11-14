@@ -1517,24 +1517,32 @@ function vcfRoot(b, atk, maxLen, t0, budget, preScored) {
   if (maxLen <= 1 || vcfStopped()) return null;
   let sc = preScored;
   if (!sc) {
-    const cl = candidateList(b, 2);
+    const clLen = candidateBuf(b, 2);
     sc = [];
-    for (let q = 0; q < cl.length; q++) {
-      const i = cl[q], x = i % N, y = (i / N) | 0;
+    for (let q = 0; q < clLen; q++) {
+      const i = CAND_BUF[q], x = i % N, y = (i / N) | 0;
       pointTierEx(b, x, y, atk);
-      if (P_RES.t >= T.FOUR) sc.push(scoreCell(b, x, y, atk));
+      const tier = P_RES.t;
+      if (tier === T.FIVE) return { i, x, y, len: 1 };
+      if (tier >= T.FOUR) {
+        sc.push({ i, x, y, m: tier, s: (tier >= T.OFOUR ? 100 : 0) + P_RES.hi * 4 + P_RES.mid,
+                  mn: THR_N, m0: THR_BUF[0], m1: THR_BUF[1] });
+      }
     }
-    sc.sort((a, c) => c.s - a.s);
+    sc.sort((a, c) => c.s - a.s || a.i - c.i);
   }
   let best = null, bestLen = 1e9;
   for (const c of sc) {
     if (vcfStopped()) break;
     if (c.m < T.FOUR) continue;                        // 只有成五/成四是逼迫手
-    pointTierEx(b, c.x, c.y, atk);
-    const tier = P_RES.t;
-    if (tier === T.FIVE) return { i: c.i, x: c.x, y: c.y, len: 1 };
-    if (tier < T.FOUR) continue;
-    const mn = THR_N, m0 = THR_BUF[0], m1 = THR_BUF[1];
+    let mn = c.mn, m0 = c.m0, m1 = c.m1;
+    if (mn === undefined) {
+      pointTierEx(b, c.x, c.y, atk);
+      const tier = P_RES.t;
+      if (tier === T.FIVE) return { i: c.i, x: c.x, y: c.y, len: 1 };
+      if (tier < T.FOUR) continue;
+      mn = THR_N; m0 = THR_BUF[0]; m1 = THR_BUF[1];
+    }
     b[c.i] = atk;
     const r = vcfAnswer(b, atk, maxLen - 1, m0, m1, mn);
     b[c.i] = EMPTY;
