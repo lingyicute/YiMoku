@@ -143,6 +143,72 @@ const clickCell = (w, d, x, y) => {
   close();
 }
 
+/* 异步 storage 事件尚未送达时，结算和悔棋也不能覆盖别的标签页战绩。 */
+{
+  const { w, d, close } = boot();
+  w.eval('setMode("pvp")');
+  const seq = [[0,0],[0,1],[1,0],[1,1],[2,0],[2,1],[3,0],[3,1],[4,0]];
+  seq.slice(0, -1).forEach(([x,y]) => clickCell(w, d, x, y));
+  const other = { total: 1, ai: { win: 0, lose: 0, draw: 0 }, pvp: { b: 0, w: 1, draw: 0 }, best: null };
+  w.localStorage.setItem('yimoku:records', JSON.stringify(other)); // 模拟另一页结算，事件还在队列里
+  clickCell(w, d, ...seq[seq.length - 1]);
+  const saved = JSON.parse(w.localStorage.getItem('yimoku:records'));
+  ok('结算前读取最新战绩', saved.total === 2 && saved.pvp.b === 1 && saved.pvp.w === 1, JSON.stringify(saved));
+  close();
+}
+{
+  const { w, d, close } = boot();
+  w.eval('setMode("pvp")');
+  [[0,0],[0,1],[1,0],[1,1],[2,0],[2,1],[3,0],[3,1],[4,0]].forEach(([x,y]) => clickCell(w, d, x, y));
+  const newer = { total: 2, ai: { win: 0, lose: 0, draw: 0 }, pvp: { b: 1, w: 1, draw: 0 }, best: null };
+  const raw = JSON.stringify(newer);
+  w.localStorage.setItem('yimoku:records', raw);
+  w.eval('undo()');
+  ok('旧终局悔棋不能覆盖尚未通知的其他战绩', w.localStorage.getItem('yimoku:records') === raw);
+  ok('旧终局悔棋后界面采用最新战绩', d.getElementById('recTotal').textContent === '2 局');
+  close();
+}
+{
+  const { w, d, close } = boot();
+  w.eval('setMode("pvp")');
+  [[0,0],[0,1],[1,0],[1,1],[2,0],[2,1],[3,0],[3,1],[4,0]].forEach(([x,y]) => clickCell(w, d, x, y));
+  w.dispatchEvent(new w.StorageEvent('storage', { key: 'yimoku:records' })); // 已过期的通知，不代表记录被改动
+  w.eval('undo()');
+  ok('过期通知不应取消仍有效的终局回滚', JSON.parse(w.localStorage.getItem('yimoku:records')).total === 0);
+  close();
+}
+{
+  const { w, d, close } = boot();
+  w.eval('setMode("pvp")');
+  const original = w.Storage.prototype.setItem;
+  let interleaved = false;
+  w.Storage.prototype.setItem = function(key, value) {
+    original.call(this, key, value);
+    if (key === 'yimoku:records' && !interleaved) {
+      interleaved = true;
+      const newer = JSON.parse(value);
+      newer.total++; newer.pvp.w++;
+      original.call(this, key, JSON.stringify(newer)); // 别页紧接着写入
+    }
+  };
+  [[0,0],[0,1],[1,0],[1,1],[2,0],[2,1],[3,0],[3,1],[4,0]].forEach(([x,y]) => clickCell(w, d, x, y));
+  const raw = w.localStorage.getItem('yimoku:records');
+  w.eval('undo()');
+  ok('写入后立即被别页更新：悔棋不覆盖新战绩', JSON.parse(raw).total === 2 && w.localStorage.getItem('yimoku:records') === raw);
+  close();
+}
+{
+  const { w, d, close } = boot();
+  Object.defineProperty(w, 'localStorage', { configurable: true, value: {
+    getItem() { throw new Error('denied'); }, setItem() { throw new Error('denied'); }
+  } });
+  w.eval('setMode("pvp")');
+  const win = () => [[0,0],[0,1],[1,0],[1,1],[2,0],[2,1],[3,0],[3,1],[4,0]].forEach(([x,y]) => clickCell(w, d, x, y));
+  win(); w.eval('restartGame()'); win();
+  ok('存储被禁用时保留内存中的战绩', w.eval('S.records.total') === 2);
+  close();
+}
+
 /* 2c) 损坏的战绩 / 配色偏好不得渗入界面（NaN、负数、非法配色） */
 {
   const { w, d, errors, close } = boot(undefined, {
