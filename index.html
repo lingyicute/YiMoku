@@ -1175,30 +1175,45 @@ function opponentThreesForced(b, side) {
   const opp = other(side), lines = [];
   for (let li = 0; li < LINES.length; li++) {
     const line = LINES[li], len = line.length;
-    let cs = 0, co = 0;
+    let cs = 0, co = 0, has3O = 0;
     for (let k = 0; k < 5; k++) {
       const v = b[line[k]];
       if (v === side) cs++; else if (v === opp) co++;
     }
     for (let st = 0; ; st++) {
       if (cs === 3 && co === 0) return false; // a counter-four, not a loss proof
+      if (co === 3 && cs === 0) has3O = 1;
       if (st + 5 >= len) break;
       const vo = b[line[st]], vn = b[line[st + 5]];
       if (vo === side) cs--; else if (vo === opp) co--;
       if (vn === side) cs++; else if (vn === opp) co++;
     }
-    if (openThreeOnLine(b, line, opp) > 0) lines.push(line);
+    if (has3O && openThreeOnLine(b, line, opp) > 0) lines.push(line);
   }
   if (!lines.length) return false;
   const witness = lines[0];
-  for (let k = 0; k < witness.length; k++) {
-    const i = witness[k];
-    if (b[i]) continue;
-    b[i] = side;
+  if (lines.length >= 2) {
+    /* 两条不同直线至多交于一格；不在 lines[1] 上的应手无法破坏 lines[1] 的活三。 */
+    const otherLine = lines[1];
+    let hit = -1;
+    for (let k = 0; k < witness.length; k++) {
+      const c = witness[k];
+      if (!b[c] && otherLine.indexOf(c) >= 0) { hit = c; break; }
+    }
+    if (hit < 0) return true;
+    b[hit] = side;
     let survives = false;
     for (let j = 0; j < lines.length; j++) {
       if (openThreeOnLine(b, lines[j], opp) > 0) { survives = true; break; }
     }
+    b[hit] = EMPTY;
+    return survives;
+  }
+  for (let k = 0; k < witness.length; k++) {
+    const i = witness[k];
+    if (b[i]) continue;
+    b[i] = side;
+    const survives = openThreeOnLine(b, witness, opp) > 0;
     b[i] = EMPTY;
     if (!survives) return false;
   }
