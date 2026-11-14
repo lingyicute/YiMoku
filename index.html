@@ -319,7 +319,8 @@ header{
 }
 .board.showcur .cell.cursor:not(.on) .s{background:var(--pv); opacity:.6; transform:scale(1)}
 .board.showcur .cell.cursor{outline:2.5px solid var(--accent); outline-offset:-1px}
-.board.over .cell{cursor:default}
+/* 终局、AI 思考中与已落子的格子点了不会落子：不显示可点击的手形光标 */
+.board:not(.human) .cell,.board .cell.on{cursor:default}
 
 /* ---------------- 结果条 ---------------- */
 .resultbar{
