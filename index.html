@@ -2756,20 +2756,28 @@ function chooseAiMove(b, diff, aiP) {
   /* 1. 必胜 */
   if (winCell) return winCell;
   /* 2. 必挡（难度越高越可靠） */
+  let missBlock = false;
   if (blockCell) {
-    if (diff === 'easy') { if (Math.random() < 0.82) return blockCell; }
+    if (diff === 'easy') { if (Math.random() < 0.82) return blockCell; missBlock = true; }
     else return blockCell;
   }
   scored.sort((a, c) => c.s - a.s);
-  /* 3. 简单：在前排候选中带噪声地挑选（收拢候选范围，避免纯瞎走） */
+  /* 3. 简单：在前排候选中带噪声地挑选（收拢候选范围，避免纯瞎走）
+     漏挡分支须把挡点剔出候选：挡点带 0.9×TW[FIVE] 的防守分，恒排第一，
+     否则噪声挑选仍有约四成概率抽回挡点，实际挡五率约 89% 而非设计的 82%。 */
   if (diff === 'easy') {
+    let pool = scored;
+    if (missBlock) {
+      const rest = scored.filter(c => c.o !== T.FIVE);
+      if (rest.length) pool = rest;
+    }
     const r = Math.random();
-    const top = Math.min(6, scored.length);
+    const top = Math.min(6, pool.length);
     let rank;
     if (r < 0.70) rank = Math.floor(Math.random() * Math.min(2, top));
     else if (r < 0.92) rank = Math.floor(Math.random() * top);
-    else rank = Math.floor(Math.random() * Math.min(10, scored.length));
-    return scored[Math.min(rank, scored.length - 1)];
+    else rank = Math.floor(Math.random() * Math.min(10, pool.length));
+    return pool[Math.min(rank, pool.length - 1)];
   }
   /* 4. 中等：贪心 + 轻微扰动 */
   if (diff === 'medium') {
