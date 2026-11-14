@@ -76,17 +76,17 @@ def download(url, path):
         f.write(r.read())
 
 
-def make_font_face(b64, woff_kb, b64_kb, count, mode):
+def make_font_face(b64, src_mb, src_fmt, woff_kb, b64_kb, count, mode):
     return (
         "/* ===== Nebulove 子集（内嵌，离线可用）=====\n"
         "   由 scripts/subset_font.py 生成：只保留本页会用到的 %d 个字形（%s 模式）。\n"
-        "   1.25 MB woff2 → %.1f KB woff2（base64 后 %.1f KB），随页面一起加载、无网络请求。 ===== */\n"
+        "   %.2f MB %s → %.1f KB woff2（base64 后 %.1f KB），随页面一起加载、无网络请求。 ===== */\n"
         '@font-face {\n'
         "  font-family: 'Nebulove';\n"
         '  src: url("data:font/woff2;base64,%s") format("woff2");\n'
         "  font-weight: normal;\n"
         "  font-style: normal;\n"
-        "}" % (count, mode, woff_kb, b64_kb, b64)
+        "}" % (count, mode, src_mb, src_fmt, woff_kb, b64_kb, b64)
     )
 
 
@@ -124,6 +124,8 @@ def main():
             print("下载完整字体：%s" % args.font_url)
             download(args.font_url, ttf)
         ttf_size = os.path.getsize(ttf)
+        # 源字体的格式与大小写进注释：--ttf / --font-url 可换源，不能写死
+        src_fmt = os.path.splitext(ttf)[1].lstrip(".").lower() or "font"
         print("完整字体：%.0f KB（%s）" % (ttf_size / 1024, os.path.basename(ttf)))
 
         wofl, covered = build_subset(chars, ttf)
@@ -142,7 +144,8 @@ def main():
         f.write(wofl)
     print("子集文件：%s" % keep)
     b64 = base64.b64encode(wofl).decode("ascii")
-    new_face = make_font_face(b64, len(wofl) / 1024, len(b64) / 1024, len(covered), mode).replace("\n", nl)
+    new_face = make_font_face(b64, ttf_size / 1024 / 1024, src_fmt,
+                              len(wofl) / 1024, len(b64) / 1024, len(covered), mode).replace("\n", nl)
     new_html, n = FONT_FACE_RE.subn(lambda _m: new_face, html, count=1)
     if new_html == html:
         print("页面已经是目标内容，未改动。")
