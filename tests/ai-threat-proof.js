@@ -146,11 +146,14 @@ for (const slow of [false, true]) for (const start of [0x7ffffffe, 0x7fffffff, 0
     assert.deepEqual(b, before);
   });
 }
-// Targeted equivalence: true double-three, shared defence, and remote counter-four.
+// Targeted equivalence: intersecting double-three, shared defence, remote counter-four,
+// parallel disjoint lines, and two open threes on the same line.
 const targets = [
   board([[5,7,2],[6,7,2],[7,7,2],[7,5,2],[7,6,2]]),
   board([[3,7,2],[4,7,2],[5,7,2],[6,4,2],[6,5,2],[6,6,2],[1,7,1],[6,2,1]]),
-  board([[5,7,2],[6,7,2],[7,7,2],[7,5,2],[7,6,2],[0,0,1],[2,0,1],[4,0,1]])
+  board([[5,7,2],[6,7,2],[7,7,2],[7,5,2],[7,6,2],[0,0,1],[2,0,1],[4,0,1]]),
+  board([[3,4,2],[4,4,2],[5,4,2],[3,10,2],[4,10,2],[5,10,2]]),
+  board([[2,7,2],[3,7,2],[4,7,2],[9,7,2],[10,7,2],[11,7,2]])
 ];
 const corpus = [];
 function equivalent(b, side) {
@@ -164,7 +167,7 @@ function equivalent(b, side) {
 }
 for (let n = 0; n < targets.length; n++) test('reduced defence proof fixture ' + n, () => {
   equivalent(targets[n], 1);
-  assert.equal(e.proof(targets[n], 1), n === 0);
+  assert.equal(e.proof(targets[n], 1), n === 0 || n >= 3);
 });
 let seed = 0x3a715b9;
 function rnd(n) { seed ^= seed << 13; seed ^= seed >>> 17; seed ^= seed << 5; return (seed >>> 0) % n; }
