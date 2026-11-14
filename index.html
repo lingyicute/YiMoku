@@ -3838,6 +3838,9 @@ function syncSwatches() {
 
 /* ---------- 键盘 ---------- */
 function onKey(e) {
+  /* 自动填充/扩展合成的 keydown 可能不是 KeyboardEvent（没有 key），IME 组字中的按键也不是快捷键：
+     否则下方 e.key.toLowerCase() 直接抛 TypeError。 */
+  if (typeof e.key !== 'string' || e.isComposing) return;
   if (anyModalOpen()) {
     if (e.key === 'Escape') closeAllModals();
     else if (e.key === 'Tab' && !e.ctrlKey && !e.metaKey && !e.altKey) trapTab(e);
