@@ -339,6 +339,18 @@ const click = el => el.dispatchEvent(new window.MouseEvent('click', { bubbles: t
     delete clock.textContent;
   }
 
+  /* ---- 计时刷新只在计时进行中挂着：开局前 / 重开后不得空转 ---- */
+  window.eval(`
+    window.__keepMode = S.mode;
+    S.mode = 'pvp'; restartGame();
+    if (clockTick !== null) throw new Error('开局前不应挂着计时刷新');
+    doMove(0, 0);
+    if (clockTick === null) throw new Error('开始计时后应挂上计时刷新');
+    restartGame();
+    if (clockTick !== null) throw new Error('重开后应摘掉计时刷新');
+    S.mode = window.__keepMode; restartGame();
+  `);
+
   /* ---- Worker 生命周期：可控计时与消息，避免依赖真实搜索速度 ---- */
   function workerFixture(options = {}) {
     const workers = [], activeURLs = new Set(), timers = new Map();
