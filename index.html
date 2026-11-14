@@ -3003,7 +3003,7 @@ function guardAgainstVcf(b, ai, pick, ordered, t0, budget) {
    ============================================================ */
 const store = {
   get(k, d) { try { const v = localStorage.getItem('yimoku:' + k); return v === null ? d : v; } catch (e) { return d; } },
-  set(k, v) { try { localStorage.setItem('yimoku:' + k, v); } catch (e) {} },
+  set(k, v) { try { localStorage.setItem('yimoku:' + k, v); return true; } catch (e) { return false; } },
   getJSON(k, d) { try { const v = localStorage.getItem('yimoku:' + k); return v ? JSON.parse(v) : d; } catch (e) { return d; } },
   setJSON(k, v) { try { localStorage.setItem('yimoku:' + k, JSON.stringify(v)); } catch (e) {} }
 };
@@ -3012,6 +3012,7 @@ const store = {
 const storageNumber = v => typeof v === 'number' ? v : (typeof v === 'string' && v.trim() !== '' ? Number(v) : NaN);
 const validDiff = d => typeof d === 'string' && Object.prototype.hasOwnProperty.call(DIFF_NAME, d);
 function freshRecords() { return { total: 0, ai: { win: 0, lose: 0, draw: 0 }, pvp: { b: 0, w: 0, draw: 0 }, best: null }; }
+let lastRecordsJSON = null;
 function normalizeRecords(r) {
   const d = freshRecords();
   if (!r || typeof r !== 'object') return d;
@@ -3188,8 +3189,8 @@ function loadPrefs() {
   const d = store.get('diff', 'easy'); if (validDiff(d)) S.diff = d;
   const sd = store.get('side', '1'); S.side = sd === '2' ? WHITE : BLACK;
   S.sound = store.get('sound', '1') === '1';
-  const r = store.getJSON('records', null);
-  S.records = normalizeRecords(r);
+  lastRecordsJSON = store.get('records', null);
+  S.records = recordsFromJSON(lastRecordsJSON);
 }
 function saveSettings() {
   store.set('mode', S.mode); store.set('diff', S.diff); store.set('side', String(S.side));
@@ -3457,7 +3458,27 @@ function renderRecords() {
     ? (r.best.moves + ' 手 · ' + fmt(r.best.ms) + '（' + (DIFF_NAME[r.best.diff] || '人机') + '）')
     : '暂无记录';
 }
+/* storage 事件异步到达；写入或回滚之前先检查存储，而不依赖事件已送达。 */
+function recordsFromJSON(raw) {
+  try { return normalizeRecords(raw === null ? null : JSON.parse(raw)); }
+  catch (e) { return freshRecords(); }
+}
+function refreshRecords() {
+  const raw = store.get('records', null);
+  if (raw === lastRecordsJSON) return false;
+  lastRecordsJSON = raw;
+  S.records = recordsFromJSON(raw);
+  S.lastRecordSnapshot = null;
+  renderRecords();
+  return true;
+}
+function writeRecords() {
+  const raw = JSON.stringify(S.records);
+  /* 写入可能被浏览器拒绝；成功时记住写入的值，不能二次读取并误认别页的新值。 */
+  if (store.set('records', raw)) lastRecordsJSON = raw;
+}
 function recordResult() {
+  refreshRecords();
   S.lastRecordSnapshot = JSON.parse(JSON.stringify(S.records));
   const r = S.records;
   r.total++;
@@ -3475,7 +3496,7 @@ function recordResult() {
     else if (S.winner === BLACK) r.pvp.b++;
     else r.pvp.w++;
   }
-  store.setJSON('records', r);
+  writeRecords();
   renderRecords();
 }
 
@@ -3707,10 +3728,12 @@ function undo() {
   markLast(S.moves.length ? S.moves[S.moves.length - 1].i : -1);
   markWin(null);
   if (wasOver && S.lastRecordSnapshot) {
-    S.records = S.lastRecordSnapshot;
+    if (!refreshRecords()) {
+      S.records = S.lastRecordSnapshot;
+      writeRecords();
+      renderRecords();
+    }
     S.lastRecordSnapshot = null;
-    store.setJSON('records', S.records);
-    renderRecords();
   }
   S.over = false; S.winner = 0;
   resultBar.classList.remove('show');
@@ -3985,7 +4008,7 @@ function init() {
   $('clearConfirm').addEventListener('click', () => {
     S.records = freshRecords();
     S.lastRecordSnapshot = null;
-    store.setJSON('records', S.records);
+    writeRecords();
     renderRecords();
     closeModal('modalClear');
   });
@@ -4035,9 +4058,7 @@ function init() {
       updateSoundUI();
     }
     if (e.key === null || e.key === 'yimoku:records') {
-      S.records = normalizeRecords(store.getJSON('records', null));
-      S.lastRecordSnapshot = null;    // 快照同样过期：终局后悔棋不得再用它覆盖别页刚写入的成绩
-      renderRecords();
+      refreshRecords(); // 已过期的事件若对应当前值，不应作废本页仍有效的快照
     }
   });
 
