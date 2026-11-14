@@ -181,6 +181,17 @@ for (const diff of ['easy','medium','hard','expert']) test('single centre candid
   assert.equal(e.chooseAiMove(b,diff,1).i,112);
   assert.deepEqual(b,before);
 });
+test('easy AI that decides to miss a block really misses it',()=>{
+  const e=engine(), b=board([[3,7,2],[4,7,2],[5,7,2],[6,7,2],[2,7,1],[7,8,1],[9,9,1]]);
+  const rand=Math.random;
+  // First draw (>=0.82) skips the block; later draws pick rank 0 of the noisy pool.
+  let calls=0; Math.random=()=>(calls++===0?0.9:0);
+  try { assert.notEqual(e.chooseAiMove(b,'easy',1).i,at(7,7)); }
+  finally { Math.random=rand; }
+  calls=0; Math.random=()=>0;
+  try { assert.equal(e.chooseAiMove(b,'easy',1).i,at(7,7)); }
+  finally { Math.random=rand; }
+});
 test('VCF maxLen<=0 returns null and maxLen=1 only accepts immediate five',()=>{
   const e=engine(), b4=board([[0,0,1],[1,0,1],[2,0,1],[3,0,1]]), b3=board([[5,7,1],[6,7,1],[7,7,1]]);
   assert.equal(e.vcfRoot(b4,1,0,0,1e6),null);
