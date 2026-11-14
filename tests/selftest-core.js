@@ -69,6 +69,26 @@ function selfTest() {
     }
   }
 
+  /* 简单难度的漏挡分支（18%）必须真的漏挡：挡点恒排第一，旧版的噪声挑选
+     会再抽回它，实际挡五率约 89%。随机数序列：漏挡 → 前两名 → 第一名。 */
+  {
+    const realRandom = Math.random;
+    try {
+      b = makeBoard();
+      for (let k = 0; k < 4; k++) b[idx(k, 7)] = WHITE;
+      b[idx(7, 3)] = BLACK;
+      let seq = [0.9, 0.5, 0];
+      Math.random = () => (seq.length ? seq.shift() : 0);
+      let mv = chooseAiMove(b, 'easy', BLACK);
+      assert(mv && b[mv.i] === EMPTY && mv.i !== idx(4, 7), '简单：漏挡分支不应再选中挡点');
+      seq = [0.5];
+      mv = chooseAiMove(b, 'easy', BLACK);
+      assert(mv && mv.i === idx(4, 7), '简单：未触发漏挡时应挡住对方五连');
+    } finally {
+      Math.random = realRandom;
+    }
+  }
+
   /* 困难/专家：不撞墙、能搜索 */
   b = makeBoard();
   b[idx(7, 7)] = BLACK; b[idx(7, 8)] = WHITE;
