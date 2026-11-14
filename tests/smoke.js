@@ -624,6 +624,19 @@ const click = el => el.dispatchEvent(new window.MouseEvent('click', { bubbles: t
     window.eval('restartGame()');
   }
 
+  /* 自动填充等合成的 keydown 不是 KeyboardEvent（没有 key），IME 组字按键也不是快捷键 */
+  {
+    const errs = [];
+    const onErr = e => errs.push(e.message);
+    window.addEventListener('error', onErr);
+    document.dispatchEvent(new window.Event('keydown', { bubbles: true }));
+    const n0 = window.eval('S.moves.length');
+    key('h', { isComposing: true });
+    window.removeEventListener('error', onErr);
+    assert(errs.length === 0, '无 key 的 keydown 不应抛错（实际：' + errs.join('; ') + '）');
+    assert(window.eval('S.moves.length') === n0 && !$('modalHelp').classList.contains('open'), 'IME 组字中的按键不应触发快捷键');
+  }
+
   /* ---- 修饰键组合在模态框与弹层中不应被拦截 ---- */
   {
     window.eval('openModal("modalHelp")');
