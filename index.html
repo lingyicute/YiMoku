@@ -19,7 +19,7 @@
   } catch (e) {}
   if (t !== 'light' && t !== 'dark') {
     var dark = false;
-    try { dark = !!(window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches); } catch (e) {}
+    try { var mq = window.matchMedia && matchMedia('(prefers-color-scheme: dark)'); dark = !!(mq && mq.matches); } catch (e) {}
     t = dark ? 'dark' : 'light';
   }
   document.documentElement.dataset.theme = t;
@@ -3122,7 +3122,12 @@ function updateSoundUI() {
 /* ---------- 主题 ---------- */
 const THEME_COLOR = { light: '#F5F3F8', dark: '#100D16' };   // 与 --bg / 深色顶栏 --bg2 一致
 const storedTheme = () => { const t = store.get('theme', null); return t === 'light' || t === 'dark' ? t : null; };
-const systemTheme = () => (window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches) ? 'dark' : 'light';
+function systemTheme() {
+  try {
+    const mq = window.matchMedia && matchMedia('(prefers-color-scheme: dark)');
+    return mq && mq.matches ? 'dark' : 'light';
+  } catch (e) { return 'light'; }
+}
 function applyTheme(t) {
   document.documentElement.dataset.theme = t;
   /* 移动端地址栏 / 系统 UI 跟随页面深浅色，而不是停在 <head> 里写死的浅色 */
@@ -3134,11 +3139,13 @@ function applyTheme(t) {
 }
 /* 未手动选过主题时跟随系统切换：<head> 里的预初始化脚本只在加载那一刻读了一次系统偏好 */
 function watchSystemTheme() {
-  if (!window.matchMedia) return;
-  const mq = matchMedia('(prefers-color-scheme: dark)');
-  const follow = () => { if (!storedTheme()) applyTheme(mq.matches ? 'dark' : 'light'); };
-  if (mq.addEventListener) mq.addEventListener('change', follow);
-  else if (mq.addListener) mq.addListener(follow);
+  try {
+    const mq = window.matchMedia && matchMedia('(prefers-color-scheme: dark)');
+    if (!mq) return;
+    const follow = () => { if (!storedTheme()) applyTheme(mq.matches ? 'dark' : 'light'); };
+    if (mq.addEventListener) mq.addEventListener('change', follow);
+    else if (mq.addListener) mq.addListener(follow);
+  } catch (e) {}
 }
 
 /* ---------- 存储加载 ---------- */
