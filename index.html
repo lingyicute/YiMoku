@@ -1695,6 +1695,7 @@ function vctDefences(b, atk, out, l) {
   for (let q = 0; q < cl.length; q++) {
     const i = cl[q];
     pointTierEx(b, i % N, (i / N) | 0, def);
+    if (P_RES.t >= T.OFOUR) return 0; // 防方已有连五或活四/双四反杀，当前攻着立即可证伪
     if (P_RES.t >= T.FOUR) {
       n = vctAddDefence(out, n, i);
       if (n > VCT_DEF_CAP) return n;
