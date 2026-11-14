@@ -3195,7 +3195,7 @@ function restoreSession() {
     if (!Number.isFinite(acc) || acc < 0) return false;
     const seen = new Uint8Array(N * N);
     for (const m of s.moves) {
-      if (!Array.isArray(m) || !Number.isInteger(m[0]) || !Number.isInteger(m[1]) ||
+      if (!Array.isArray(m) || m.length !== 2 || !Number.isInteger(m[0]) || !Number.isInteger(m[1]) ||
           !inB(m[0], m[1])) return false;
       const i = idx(m[0], m[1]);
       if (seen[i]) return false;                       // 重复落点
