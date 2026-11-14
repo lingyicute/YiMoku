@@ -2915,13 +2915,14 @@ function lostAfterEveryReply(b, ai, opp, deadline) {
     finally { b[only] = EMPTY; }
   }
   if (openThreeCount(b, ai, 1) > 0) return false;
-  // Cheap winning counterexamples before the expensive universal check.
-  for (let i = 0; i < N * N; i++) {
-    if (!b[i] && pointTier(b, i % N, (i / N) | 0, ai) >= T.OFOUR) return false;
-  }
   // Probe tactical/defensive neighbours ahead of passive intersections so
-  // refutations fail fast instead of burning the guard budget from A1 onward.
-  const local = candidateList(b, 2).map(i => scoreCell(b, i % N, (i / N) | 0, ai));
+  // refutations fail fast; any T.OFOUR point lies within radius-2 candidates.
+  const cl = candidateList(b, 2), local = [];
+  for (let q = 0; q < cl.length; q++) {
+    const i = cl[q], c = scoreCell(b, i % N, (i / N) | 0, ai);
+    if (c.m >= T.OFOUR) return false;
+    local.push(c);
+  }
   local.sort((a, c) => c.s - a.s);
   GUARD_SEEN.fill(0);
   const order = [];
