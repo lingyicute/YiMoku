@@ -2978,7 +2978,7 @@ const store = {
 };
 
 /* localStorage 可能含有任意 JSON：避免对象强制转换抛错，也不要把原型属性当成难度。 */
-const storageNumber = v => typeof v === 'number' || typeof v === 'string' ? Number(v) : NaN;
+const storageNumber = v => typeof v === 'number' ? v : (typeof v === 'string' && v.trim() !== '' ? Number(v) : NaN);
 const validDiff = d => typeof d === 'string' && Object.prototype.hasOwnProperty.call(DIFF_NAME, d);
 function freshRecords() { return { total: 0, ai: { win: 0, lose: 0, draw: 0 }, pvp: { b: 0, w: 0, draw: 0 }, best: null }; }
 function normalizeRecords(r) {
