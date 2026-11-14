@@ -2496,12 +2496,12 @@ function ttStore(slot, key, val, flag, depth, ext, bestI, ply) {
   TT_META[slot] = flag | ((depth > 31 ? 31 : depth) << 2) | ((ext > 31 ? 31 : ext) << 7) | ((bestI > 254 ? 255 : bestI) << 12) | (ttGen << 20);
 }
 function abSearch(b, ai, side, depth, alpha, beta, ply, t0, budget, ext) {
+  if (AI_TT) ensureTT();
   const rootCall = !zHashActive;
   if (rootCall) { initZHash(b, ai); zHashActive = true; }
   const hl0 = zHashL, hh0 = zHashH;
   let ttMove = -1, key = 0, slot = -1;
   if (AI_TT) {
-    ensureTT();
     key = positionKey(hl0, hh0, side);
     if (key !== 0) {                               // key===0 保留给空槽：本节点跳过 TT
       slot = key & TT_MASK;                        // double 位运算取低 32 位 = hl，槽位安全
@@ -2639,7 +2639,9 @@ function abSearch(b, ai, side, depth, alpha, beta, ply, t0, budget, ext) {
   return val;
 }
 function searchBest(b, ai, ordered, maxDepth, budget) {
+  const bSnap = b.slice();
   ttGen = (ttGen + 1) & 0xFFF;
+  try {
   if (AI_INC_EVAL && AI_FAST_TOPK) { initIncTable(b); incActive = true; }
   initZHash(b, ai); zHashActive = true;
   const hlRoot = zHashL, hhRoot = zHashH;
@@ -2736,8 +2738,14 @@ function searchBest(b, ai, ordered, maxDepth, budget) {
       break;
     }
   }
-  incActive = false; incDirty = -1; lineDirty = -1; zHashActive = false;
   return best;
+  } catch (e) {
+    b.set(bSnap);
+    throw e;
+  } finally {
+    incActive = false; incDirty = -1; lineDirty = -1; zHashActive = false;
+    uPtr = 0; luPtr = 0; r1Len = 0; r2Len = 0;
+  }
 }
 
 /* ---------- AI 落子决策 ---------- */
