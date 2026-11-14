@@ -3809,7 +3809,7 @@ function syncSwatches() {
 function onKey(e) {
   if (anyModalOpen()) {
     if (e.key === 'Escape') closeAllModals();
-    else if (e.key === 'Tab') trapTab(e);
+    else if (e.key === 'Tab' && !e.ctrlKey && !e.metaKey && !e.altKey) trapTab(e);
     return;
   }
   if (e.key === 'Escape') {
@@ -3818,6 +3818,7 @@ function onKey(e) {
   }
   /* 弹层（配色 / 菜单）打开时支持内部方向键与 Tab 循环，并阻断棋盘快捷键穿透。 */
   if (openPop) {
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
     if (e.key === 'Tab') { trapTab(e, openPop); return; }
     const items = [...openPop.querySelectorAll('button:not([disabled])')];
     if (items.length) {
