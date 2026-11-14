@@ -613,9 +613,47 @@ const click = el => el.dispatchEvent(new window.MouseEvent('click', { bubbles: t
     click(document.querySelector('.cell[data-x="0"][data-y="0"]'));
     await sleep(400);
     assert(window.eval('S.moves.length') === 4 && window.eval('S.aiThinking') === false, '评分函数同样失效时仍要落子且复位思考态');
-    window.scoreCell = realScore; window.chooseAiMove = realChoose;
+    /* 引擎返回非法或已占格着法时，safeAiMove 同样应回退合法空点 */
+    window.scoreCell = realScore;
+    window.chooseAiMove = function () { return { x: 7, y: 7, i: 112 }; };
+    click(document.querySelector('.cell[data-x="1"][data-y="0"]'));
+    await sleep(400);
+    assert(window.eval('S.moves.length') === 6 && window.eval('S.aiThinking') === false, '引擎返回已占格着法时仍应回退合法空点');
+    window.chooseAiMove = realChoose;
     assert(window.eval('chooseAiMove') === realChoose && window.eval('scoreCell') === realScore, '测试结束后应恢复原引擎函数');
     window.eval('restartGame()');
+  }
+
+  /* ---- 修饰键组合在模态框与弹层中不应被拦截 ---- */
+  {
+    window.eval('openModal("modalHelp")');
+    const ctrlTab = new window.KeyboardEvent('keydown', { key: 'Tab', ctrlKey: true, bubbles: true, cancelable: true });
+    document.dispatchEvent(ctrlTab);
+    assert(!ctrlTab.defaultPrevented, '模态框内 Ctrl+Tab 不应被拦截');
+    click($('helpOk'));
+
+    click($('menuBtn'));
+    const altLeft = new window.KeyboardEvent('keydown', { key: 'ArrowLeft', altKey: true, bubbles: true, cancelable: true });
+    document.dispatchEvent(altLeft);
+    assert(!altLeft.defaultPrevented, '弹层内 Alt+ArrowLeft 不应被拦截');
+    const ctrlHome = new window.KeyboardEvent('keydown', { key: 'Home', ctrlKey: true, bubbles: true, cancelable: true });
+    document.dispatchEvent(ctrlHome);
+    assert(!ctrlHome.defaultPrevented, '弹层内 Ctrl+Home 不应被拦截');
+    key('Escape');
+  }
+
+  /* ---- matchMedia 返回 null 或抛错时页面仍能正常初始化 ---- */
+  for (const [label, mm] of [['返回 null', () => null], ['抛错', () => { throw new Error('no matchMedia'); }]]) {
+    const mmDom = new JSDOM(html, {
+      url: 'http://localhost/', runScripts: 'dangerously', pretendToBeVisual: true,
+      beforeParse(w) {
+        w.localStorage.setItem('yimoku:seenHelp', '1');
+        w.matchMedia = mm;
+      }
+    });
+    assert(mmDom.window.document.querySelectorAll('.cell').length === 225, 'matchMedia ' + label + ' 时仍能生成 225 格棋盘');
+    assert(mmDom.window.document.documentElement.dataset.theme === 'light', 'matchMedia ' + label + ' 时回落浅色主题');
+    mmDom.window.close();
   }
 
   console.log('tests/smoke.js: PASS');
