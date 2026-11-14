@@ -3534,9 +3534,19 @@ function endGame(winner, cells) {
    与 tests/worker-contract.js 共用同一份契约。标记缺失/错序、Worker 构造失败
    或运行期脚本报错，一律退回主线程同步搜索（scheduleAI 已有该分支），
    绝不留下一个永远不回消息的坏 Worker。 */
-let aiWorkerBusy = false, aiWorkerRelease = null;
+let aiWorkerBusy = false, aiWorkerRelease = null, aiWorkerWatchdog = null;
+/* 远大于专家搜索预算，给慢设备留余量，同时防止无报错却永不回复的 Worker 卡死。 */
+const AI_WORKER_TIMEOUT_MS = 10000;
+function clearAiWorkerWatchdog() {
+  if (aiWorkerWatchdog !== null) { clearTimeout(aiWorkerWatchdog); aiWorkerWatchdog = null; }
+}
+function isLegalAiMove(board, mv) {
+  return !!mv && Number.isInteger(mv.x) && Number.isInteger(mv.y) &&
+    inB(mv.x, mv.y) && board[idx(mv.x, mv.y)] === EMPTY;
+}
 function disposeAiWorker() {
   const worker = S.aiWorker;
+  clearAiWorkerWatchdog();
   S.aiWorker = null; aiWorkerBusy = false;
   if (worker) { try { worker.terminate(); } catch (e) {} }
   if (aiWorkerRelease) { aiWorkerRelease(); aiWorkerRelease = null; }
@@ -3580,11 +3590,11 @@ function initAiWorker() {
       const data = e.data;
       if (!data || data.id !== S.aiReqId) return;
       release();                                   // Worker 已成功跑起来，Blob 可释放
+      clearAiWorkerWatchdog();
       aiWorkerBusy = false;
       if (S.over) { S.aiThinking = false; updateStatus(); return; }
       const mv = data.mv;
-      if (!mv || !Number.isInteger(mv.x) || !Number.isInteger(mv.y) ||
-          !inB(mv.x, mv.y) || S.board[idx(mv.x, mv.y)] !== EMPTY) {
+      if (!isLegalAiMove(S.board, mv)) {
         failAiWorker(worker); return;               // 无效回复不能落子或让对局卡住
       }
       S.aiThinking = false;
@@ -3623,6 +3633,9 @@ function scheduleAI() {
     if (S.aiWorker) {
       const worker = S.aiWorker;
       aiWorkerBusy = true;
+      aiWorkerWatchdog = setTimeout(() => {
+        if (S.aiWorker === worker && S.aiReqId === currentReq && aiWorkerBusy) failAiWorker(worker);
+      }, AI_WORKER_TIMEOUT_MS);
       try {
         worker.postMessage({ id: currentReq, type: 'chooseMove', board: boardCopy, diff: diff, aiP: p });
       } catch (e) { failAiWorker(worker); }
@@ -3640,16 +3653,16 @@ function scheduleAI() {
    这里依次退回：贪心单步评分（中等难度的无扰动版）→ 离中心最近的空点，
    无论如何都给出一手合法着法，让对局继续。 */
 function safeAiMove(board, diff, p) {
+  /* 搜索中途抛错时可能尚未撤销试探手，不能让它污染兜底所用的原始局面。 */
   try {
     const mv = chooseAiMove(board.slice(), diff, p);
-    if (mv && Number.isInteger(mv.x) && Number.isInteger(mv.y) &&
-        inB(mv.x, mv.y) && board[idx(mv.x, mv.y)] === EMPTY) return mv;
+    if (isLegalAiMove(board, mv)) return mv;
   } catch (e) {}
   let best = null;
   try {
     for (const i of candidateList(board)) {
       const c = scoreCell(board, i % N, (i / N) | 0, p);
-      if (!best || c.s > best.s) best = c;
+      if (isLegalAiMove(board, c) && (!best || c.s > best.s)) best = c;
     }
   } catch (e) { best = null; }
   if (best) return best;
