@@ -3201,7 +3201,9 @@ function saveSettings() {
    读档逐手校验：整数坐标、盘内、落点不重复、中途不得出现五连、
    模式/难度/执子合法。任何一项异常即整档作废并回到空盘。 */
 let lastSessionJSON = null;
-function saveSession() {
+function saveSession(onlyIfUnchanged = false) {
+  /* 自动应手与补写计时一样，不应抢走另一标签页更新后的存档；主动操作仍可重新写档。 */
+  if (onlyIfUnchanged && (lastSessionJSON === null || store.get('session', null) !== lastSessionJSON)) return;
   const session = !S.moves.length || S.over ? null : {
     v: 1, mode: S.mode, diff: S.diff, side: S.side,
     moves: S.moves.map(m => [m.x, m.y]), acc: Math.round(elapsedMs())
@@ -3478,7 +3480,7 @@ function recordResult() {
 }
 
 /* ---------- 落子 / 结束 ---------- */
-function doMove(x, y) {
+function doMove(x, y, automatic = false) {
   const p = turn();
   const i = idx(x, y);
   if (S.board[i]) return false;
@@ -3499,7 +3501,7 @@ function doMove(x, y) {
   }
 
   updateStats(); renderMoveList(); updateStatus();
-  saveSession();
+  saveSession(automatic);
   return true;
 }
 function endGame(winner, cells) {
@@ -3598,7 +3600,7 @@ function initAiWorker() {
         failAiWorker(worker); return;               // 无效回复不能落子或让对局卡住
       }
       S.aiThinking = false;
-      doMove(mv.x, mv.y);
+      doMove(mv.x, mv.y, true);
     };
     worker.onerror = worker.onmessageerror = function () { failAiWorker(worker); };
   } catch (e) {
@@ -3643,7 +3645,7 @@ function scheduleAI() {
       const mv = safeAiMove(boardCopy, diff, p);
       if (currentReq !== S.aiReqId) return;
       S.aiThinking = false;
-      if (mv) doMove(mv.x, mv.y); else updateStatus();
+      if (mv) doMove(mv.x, mv.y, true); else updateStatus();
     }
   }, delay);
 }

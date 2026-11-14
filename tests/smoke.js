@@ -536,6 +536,49 @@ const click = el => el.dispatchEvent(new window.MouseEvent('click', { bubbles: t
     f.close();
   }
 
+  /* 另一标签页写入新存档后，后台 AI 的自动落子不能覆盖或清空它。 */
+  for (const fallback of [false, true]) {
+    const f = workerFixture(fallback ? { failCreateAt: 1 } : {}), { w, workers } = f;
+    f.move(7, 7);
+    const newer = JSON.stringify({ v: 1, mode: 'pvp', diff: 'easy', side: 1, moves: [[1, 1]], acc: 3000 });
+    w.localStorage.setItem('yimoku:session', newer); // storage 事件尚未到达
+    f.tick();
+    if (!fallback) {
+      const worker = workers[0], request = worker.messages[0];
+      worker.onmessage({ data: { id: request.id, mv: { x: 8, y: 7 } } });
+    }
+    assert(w.localStorage.getItem('yimoku:session') === newer, '后台 AI 应保留另一标签页的新存档');
+    w.dispatchEvent(new w.Event('pagehide'));
+    assert(w.localStorage.getItem('yimoku:session') === newer, '随后补写计时也不能覆盖新存档');
+    f.move(0, 0);
+    assert(JSON.parse(w.localStorage.getItem('yimoku:session')).moves.length === 3,
+      '用户主动继续原局时允许重新接管存档');
+    f.close();
+  }
+  {
+    const f = workerFixture(), { w, workers } = f;
+    w.eval('setSide(2)'); // AI 执黑的自动首手
+    const newer = JSON.stringify({ v: 1, mode: 'pvp', diff: 'easy', side: 1, moves: [[1, 1]], acc: 3000 });
+    w.localStorage.setItem('yimoku:session', newer);
+    f.tick();
+    const worker = workers[0], request = worker.messages[0];
+    worker.onmessage({ data: { id: request.id, mv: { x: 7, y: 7 } } });
+    assert(w.localStorage.getItem('yimoku:session') === newer, 'AI 自动开局不能覆盖其他标签页存档');
+    f.close();
+  }
+  {
+    const f = workerFixture(), { w, workers } = f;
+    w.eval('[[0,0],[0,1],[1,0],[1,1],[2,0],[2,1],[3,0],[3,1],[6,7]].forEach(([x,y]) => doMove(x,y))');
+    const newer = JSON.stringify({ v: 1, mode: 'pvp', diff: 'easy', side: 1, moves: [[1, 1]], acc: 3000 });
+    w.localStorage.setItem('yimoku:session', newer);
+    f.tick();
+    const worker = workers[0], request = worker.messages[0];
+    worker.onmessage({ data: { id: request.id, mv: { x: 4, y: 1 } } });
+    assert(w.eval('S.over && S.winner === 2'), '回归前提：AI 自动落子获胜');
+    assert(w.localStorage.getItem('yimoku:session') === newer, '后台 AI 终局不能清空其他标签页存档');
+    f.close();
+  }
+
   /* ---- 模态关闭不滞留焦点，且无归还目标时跨模态切换不指向已关闭模态内部 ---- */
   {
     document.activeElement.blur();
