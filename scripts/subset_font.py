@@ -102,8 +102,10 @@ def main():
 
     if not os.path.exists(args.html):
         sys.exit("找不到页面文件：%s" % args.html)
-    with open(args.html, encoding="utf-8") as f:
+    # newline="" 保留原有换行：否则读入时 CRLF 被折成 LF，写回（newline=""）后整个文件换行被改写
+    with open(args.html, encoding="utf-8", newline="") as f:
         html = f.read()
+    nl = "\r\n" if "\r\n" in html else "\n"
     if not FONT_FACE_RE.search(html):
         sys.exit("页面里没有找到 @font-face 块，无法替换。")
 
@@ -140,7 +142,7 @@ def main():
         f.write(wofl)
     print("子集文件：%s" % keep)
     b64 = base64.b64encode(wofl).decode("ascii")
-    new_face = make_font_face(b64, len(wofl) / 1024, len(b64) / 1024, len(covered), mode)
+    new_face = make_font_face(b64, len(wofl) / 1024, len(b64) / 1024, len(covered), mode).replace("\n", nl)
     new_html, n = FONT_FACE_RE.subn(lambda _m: new_face, html, count=1)
     if new_html == html:
         print("页面已经是目标内容，未改动。")
