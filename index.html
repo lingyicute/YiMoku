@@ -2937,9 +2937,11 @@ function guardAgainstVcf(b, ai, pick, ordered, t0, budget) {
   const opp = other(ai);
   const deadline = now() + Math.min(left, GUARD_MS * 3);
   b[pick.i] = ai;
-  const lost = !makesFive(b, pick.x, pick.y) &&
-               oppHasVcfAfter(b, ai, opp, Math.min(150, Math.max(20, left * 0.4)), true);
-  b[pick.i] = EMPTY;
+  let lost;
+  try {
+    lost = !makesFive(b, pick.x, pick.y) &&
+           oppHasVcfAfter(b, ai, opp, Math.min(150, Math.max(20, left * 0.4)), true);
+  } finally { b[pick.i] = EMPTY; }
   if (!lost) return pick;
   let rest = 0;
   for (const c of ordered) if (c.i !== pick.i) rest++;
@@ -2948,9 +2950,12 @@ function guardAgainstVcf(b, ai, pick, ordered, t0, budget) {
     if (c.i === pick.i) continue;
     const ms = deadline - now();
     if (ms < 8) break;
+    const sliceMs = Math.min(ms, Math.max(12, ms / Math.min(rest--, 5)));
     b[c.i] = ai;
-    const ok = !oppHasVcfAfter(b, ai, opp, Math.min(ms, Math.max(12, ms / Math.min(rest--, 5))), true);
-    b[c.i] = EMPTY;
+    let ok;
+    try {
+      ok = makesFive(b, c.x, c.y) || !oppHasVcfAfter(b, ai, opp, sliceMs, true);
+    } finally { b[c.i] = EMPTY; }
     if (ok) {
       const res = { x: c.x, y: c.y, i: c.i, m: c.m, o: c.o, s: c.s, guarded: true };
       if (!c.lose) return res;
