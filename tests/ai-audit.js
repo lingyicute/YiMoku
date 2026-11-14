@@ -198,6 +198,53 @@ test('guard counter-four refutation probes local defence before distant corners'
   assert(ticks<120, 'expected fast local refutation, got ticks='+ticks);
   assert.deepEqual(b,before);
 });
+test('partial TT OOM keeps TT atomic and restores board and search state',()=>{
+  const origF64=Float64Array;
+  let allocs=0, fail=true;
+  const oomEngine=new Function('performance','Float64Array',src+`
+    return { makeBoard, idx, chooseAiMove, safeAiMove,
+      state(){ return { incActive, incDirty, lineDirty, zHashActive, uPtr, luPtr,
+        ttKey: TT_KEY!==null, ttVal: TT_VAL!==null, ttMeta: TT_META!==null }; }
+    };`)(
+    { now:()=>0 },
+    function(n){
+      if(fail && n===(1<<19) && ++allocs===2) throw new RangeError('simulated OOM');
+      return new origF64(n);
+    }
+  );
+  const b=oomEngine.makeBoard();
+  b[oomEngine.idx(7,7)]=1; b[oomEngine.idx(8,8)]=2;
+  const before=b.slice();
+  const mv=oomEngine.safeAiMove(b,'hard',1);
+  assert(mv && Number.isInteger(mv.x) && Number.isInteger(mv.y) && b[mv.i]===0);
+  assert.deepEqual(b,before,'OOM fallback must not leak trial stones onto caller board');
+  assert.deepEqual(oomEngine.state(),{
+    incActive:false, incDirty:-1, lineDirty:-1, zHashActive:false, uPtr:0, luPtr:0,
+    ttKey:false, ttVal:false, ttMeta:false
+  });
+  fail=false;
+  const mv2=oomEngine.chooseAiMove(b,'hard',1);
+  assert(mv2 && b[mv2.i]===0,'search must recover cleanly after transient TT OOM');
+  assert.deepEqual(b,before);
+});
+test('guard accepts an immediate-five fallback even when opponent also has a five',()=>{
+  const e=new Function('performance',src+`
+    return { makeBoard, idx, scoreCell, guardAgainstVcf };`)({ now:()=>0 });
+  const b=e.makeBoard();
+  for(let x=0;x<4;x++) { b[e.idx(x,7)]=1; b[e.idx(x,0)]=2; }
+  const before=b.slice();
+  const quiet=e.scoreCell(b,7,7,1), win=e.scoreCell(b,4,7,1);
+  const pick=e.guardAgainstVcf(b,1,quiet,[quiet,win],0,500);
+  assert(pick && pick.i===win.i && pick.guarded);
+  assert.deepEqual(b,before);
+});
+test('VCT early refutation rejects attack when defender already holds open-four threat',()=>{
+  const e=engine();
+  const b=board([[5,7,1],[6,7,1],[7,5,1],[7,6,1],
+    [2,2,2],[3,2,2],[4,2,2]]), before=b.slice();
+  assert.equal(e.vctRoot(b,1,4,0,1e6),null);
+  assert.deepEqual(b,before);
+});
 // Legal random positions; reject game-ending moves rather than evaluating
 // already finished boards. Verify fast/slow leaves and tactical point metadata.
 let seed=0x73a19d4;
