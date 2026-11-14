@@ -3219,11 +3219,23 @@ function startTimer() {
   if (S.timerRun) return;
   S.timerRun = true; S.t0 = now();
   updateTime();
+  syncClockTick();
 }
 function stopTimer() {
   if (!S.timerRun) return;
   S.acc += now() - S.t0; S.timerRun = false;
   updateTime();
+  syncClockTick();
+}
+/* 250ms 刷新只在计时进行中挂着：开局前、终局后不再每秒空转唤醒 4 次。
+   直接改写 S.timerRun 的路径（重开等）由回调自行摘除。 */
+let clockTick = null;
+function syncClockTick() {
+  if (S.timerRun && clockTick === null) {
+    clockTick = setInterval(() => { if (S.timerRun) updateTime(); else syncClockTick(); }, 250);
+  } else if (!S.timerRun && clockTick !== null) {
+    clearInterval(clockTick); clockTick = null;
+  }
 }
 let lastClockText = '';
 function updateTime() {
@@ -3641,6 +3653,7 @@ function restartGame() {
   clearMoveFlash();
   S.board = makeBoard(); S.moves = []; S.over = false; S.winner = 0;
   S.started = false; S.acc = 0; S.timerRun = false; S.cursorVisible = false;
+  syncClockTick();
   markWin(null); markLast(-1);
   for (let i = 0; i < N * N; i++) { if (cellsEl[i].classList.contains('on')) paintCell(i); cellsEl[i].classList.remove('cursor', 'win', 'last'); }
   S.prevLast = -1; S.prevCursor = -1; S.lastRecordSnapshot = null;
@@ -3928,9 +3941,6 @@ function init() {
 
   /* 键盘 */
   document.addEventListener('keydown', onKey);
-
-  /* 计时刷新 */
-  setInterval(() => { if (S.timerRun) updateTime(); }, 250);
 
   /* 页面离开/转入后台时补写计时，但不覆盖其他标签页写入的存档。 */
   window.addEventListener('pagehide', saveSessionClock);
