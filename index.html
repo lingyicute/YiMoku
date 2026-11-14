@@ -1957,6 +1957,7 @@ const CENTER_W = new Float64Array(N * N);
 const DIR_BW = new Uint16Array(N * N * 4);
 const C_META = new Uint16Array(N * N);
 const C_SB = new Float64Array(N * N), C_SW = new Float64Array(N * N);
+const C_SB9 = new Float64Array(N * N), C_SW9 = new Float64Array(N * N);
 const U_NI = new Int32Array(4096), U_IDX4 = new Int32Array(4096),
       U_DBW = new Uint16Array(4096), U_META = new Uint16Array(4096),
       U_SB = new Float64Array(4096), U_SW = new Float64Array(4096);
@@ -2051,6 +2052,7 @@ function updateCellSummary(i) {
     else { tw = thr === 1 ? (best > T.FOUR ? best : T.FOUR) : best; hw = hi; sw = TW[tw] * (hi >= 2 ? 5 : (hi >= 1 && mid >= 1 ? 2.5 : 1)); }
   }
   C_META[i] = tb | (hb << 4) | (tw << 8) | (hw << 12); C_SB[i] = sb; C_SW[i] = sw;
+  const cw = CENTER_W[i]; C_SB9[i] = sb + 0.9 * sw + cw; C_SW9[i] = sw + 0.9 * sb + cw;
 }
 /* ㉗ 增量 72 线状态表 + 增量候选集 + 零分配层内候选缓冲：
    1) 全盘 72 条线展平至 LINE_FLAT，并预建空点→所属线索引表 CELL_LINES（每格至多 4 条线）。
@@ -2313,7 +2315,12 @@ function incUpdateMove(b, m) {
   addCandNeighbors(m);
 }
 function incUndo(uBase) {
-  while (uPtr > uBase) { uPtr--; const c = U_NI[uPtr]; DIR_BW[U_IDX4[uPtr]] = U_DBW[uPtr]; C_META[c] = U_META[uPtr]; C_SB[c] = U_SB[uPtr]; C_SW[c] = U_SW[uPtr]; }
+  while (uPtr > uBase) {
+    uPtr--;
+    const c = U_NI[uPtr], sb = U_SB[uPtr], sw = U_SW[uPtr], cw = CENTER_W[c];
+    DIR_BW[U_IDX4[uPtr]] = U_DBW[uPtr]; C_META[c] = U_META[uPtr];
+    C_SB[c] = sb; C_SW[c] = sw; C_SB9[c] = sb + 0.9 * sw + cw; C_SW9[c] = sw + 0.9 * sb + cw;
+  }
 }
 function candidateBuf(b, radius) {
   const R = radius === undefined ? 2 : radius;
@@ -2350,34 +2357,33 @@ function topKPacked(b, side, k, radius, plyBase) {
   else { clLen = candidateBuf(b, radius); buf = CAND_BUF; }
   if (k > K_MAX) k = K_MAX;
   const isB = side === BLACK;
-  let m = 0, winI = 1e9, blkI = -1, blkM = 0, blkS = -Infinity, blkH = 0;
+  const C_TOT = isB ? C_SB9 : C_SW9;
+  const mShift = isB ? 0 : 8, oShift = isB ? 8 : 0, hShift = isB ? 4 : 12;
+  let m = 0, blkI = -1, blkM = 0, blkS = -Infinity, blkH = 0, worstS = -Infinity, worstI = 1e9;
   for (let q = 0; q < clLen; q++) {
     const i = buf[q];
     if (b[i]) continue;
     const meta = C_META[i];
-    const mm = isB ? (meta & 15) : ((meta >> 8) & 15);
-    if (mm === T.FIVE) { if (i < winI) winI = i; continue; }
-    if (winI < 1e9) continue;
-    const mh = isB ? ((meta >> 4) & 15) : (meta >> 12);
-    const oo = isB ? ((meta >> 8) & 15) : (meta & 15);
-    const sm = isB ? C_SB[i] : C_SW[i];
-    const so = isB ? C_SW[i] : C_SB[i];
-    const sv = sm + 0.9 * so + CENTER_W[i] + HIST[i];
+    const mm = (meta >> mShift) & 15;
+    if (mm === T.FIVE) { AB_CAND[plyBase] = i | (T.FIVE << 8); return 1; }
+    const oo = (meta >> oShift) & 15;
     if (oo === T.FIVE) {
-      if (sv > blkS || (sv === blkS && i < blkI)) { blkI = i; blkM = mm; blkS = sv; blkH = mh; }
+      const sv = C_TOT[i] + HIST[i];
+      if (sv > blkS || (sv === blkS && i < blkI)) { blkI = i; blkM = mm; blkS = sv; blkH = (meta >> hShift) & 15; }
       continue;
     }
     if (blkI >= 0) continue;
-    if (m < k || sv > KS[m - 1] || (sv === KS[m - 1] && i < KI[m - 1])) {
+    const sv = C_TOT[i] + HIST[i];
+    if (m < k || sv > worstS || (sv === worstS && i < worstI)) {
       if (m < k) m++;
       let j = m - 1;
       while (j > 0 && (KS[j - 1] < sv || (KS[j - 1] === sv && KI[j - 1] > i))) {
         KS[j] = KS[j - 1]; KI[j] = KI[j - 1]; KM[j] = KM[j - 1]; KH[j] = KH[j - 1]; j--;
       }
-      KS[j] = sv; KI[j] = i; KM[j] = mm; KH[j] = mh;
+      KS[j] = sv; KI[j] = i; KM[j] = mm; KH[j] = (meta >> hShift) & 15;
+      worstS = KS[m - 1]; worstI = KI[m - 1];
     }
   }
-  if (winI < 1e9) { AB_CAND[plyBase] = winI | (T.FIVE << 8); return 1; }
   if (blkI >= 0) { AB_CAND[plyBase] = blkI | (blkM << 8) | (blkH << 12); return 1; }
   for (let j = 0; j < m; j++) {
     AB_CAND[plyBase + j] = KI[j] | (KM[j] << 8) | (KH[j] << 12);
@@ -2395,19 +2401,19 @@ topKScored = function(b, side, k, radius) {
   else { clLen = candidateBuf(b, radius); buf = CAND_BUF; }
   if (k > K_MAX) k = K_MAX;
   const isB = side === BLACK;
+  const C_TOT = isB ? C_SB9 : C_SW9;
+  const mShift = isB ? 0 : 8, oShift = isB ? 8 : 0, hShift = isB ? 4 : 12;
   let m = 0, winI = 1e9, blkI = -1, blkM = 0, blkS = -Infinity, blkH = 0;
   for (let q = 0; q < clLen; q++) {
     const i = buf[q];
     if (b[i]) continue;
     const meta = C_META[i];
-    const mm = isB ? (meta & 15) : ((meta >> 8) & 15);
+    const mm = (meta >> mShift) & 15;
     if (mm === T.FIVE) { if (i < winI) winI = i; continue; }
     if (winI < 1e9) continue;
-    const mh = isB ? ((meta >> 4) & 15) : (meta >> 12);
-    const oo = isB ? ((meta >> 8) & 15) : (meta & 15);
-    const sm = isB ? C_SB[i] : C_SW[i];
-    const so = isB ? C_SW[i] : C_SB[i];
-    const sv = sm + 0.9 * so + CENTER_W[i] + HIST[i];
+    const mh = (meta >> hShift) & 15;
+    const oo = (meta >> oShift) & 15;
+    const sv = C_TOT[i] + HIST[i];
     if (oo === T.FIVE) {
       if (sv > blkS || (sv === blkS && i < blkI)) { blkI = i; blkM = mm; blkS = sv; blkH = mh; }
       continue;
