@@ -385,6 +385,12 @@ const click = el => el.dispatchEvent(new window.MouseEvent('click', { bubbles: t
         assert(typeof fn === 'function', 'AI 应有一个待执行的计时器');
         timers.delete(id); fn();
       },
+      watchdog() { return timers.get(w.eval('aiWorkerWatchdog')); },
+      tickWatchdog() {
+        const id = w.eval('aiWorkerWatchdog'), fn = timers.get(id);
+        assert(typeof fn === 'function', '在途 Worker 应有超时保护');
+        timers.delete(id); fn();
+      },
       close() { w.close(); },
     };
   }
@@ -477,6 +483,56 @@ const click = el => el.dispatchEvent(new window.MouseEvent('click', { bubbles: t
       name + '不得污染棋盘或卡死，应重新排程回退');
     f.tick();
     assert(d.querySelectorAll('.cell.on').length === 2 && !w.eval('S.aiThinking'), name + '后主线程仍能应手');
+    f.close();
+  }
+
+  /* Worker 不报错也不回复时，超时后必须放弃它并继续对局。 */
+  {
+    const f = workerFixture(), { w, d, workers, activeURLs } = f;
+    f.move(7, 7); f.tick();
+    const worker = workers[0], request = worker.messages[0], lateWatchdog = f.watchdog();
+    assert(typeof lateWatchdog === 'function', 'Worker 投递后必须启动超时保护');
+    worker.onmessage({ data: { id: request.id + 1, mv: { x: 8, y: 7 } } });
+    assert(f.watchdog() === lateWatchdog, '无关消息不能取消当前请求的超时保护');
+    f.tickWatchdog();
+    assert(worker.terminated && !activeURLs.has(worker.url), '超时必须终止 Worker 并释放 URL');
+    assert(w.eval('S.aiThinking && S.aiWorker === null'), '超时后应排程主线程回退');
+    worker.onmessage({ data: { id: request.id, mv: { x: 8, y: 7 } } });
+    f.tick();
+    assert(d.querySelectorAll('.cell.on').length === 2 && !w.eval('S.aiThinking'), '超时回退后正常落子');
+    assert(w.eval('S.moves.length') === 2, '过期回复不得额外落子');
+    f.close();
+  }
+  {
+    const f = workerFixture(), { w, workers } = f;
+    f.move(7, 7); f.tick();
+    const first = workers[0], stale = f.watchdog(), request = first.messages[0];
+    first.onmessage({ data: { id: request.id, mv: { x: 8, y: 7 } } });
+    assert(!f.watchdog(), '成功回复后应清除超时计时器');
+    stale();
+    assert(!first.terminated && !w.eval('S.aiThinking'), '过期超时回调不得影响已完成的请求');
+    w.eval('undo()'); f.move(7, 7); f.tick();
+    const cancelled = f.watchdog();
+    w.eval('undo()');
+    assert(!f.watchdog(), '悔棋取消在途请求后应清除超时计时器');
+    f.move(6, 7); f.tick();
+    cancelled();
+    assert(workers.length === 2 && !workers[1].terminated && w.eval('S.aiThinking'),
+      '旧请求的超时回调不得终止新 Worker');
+    f.close();
+  }
+  /* 主线程引擎的异常、非法返回及中途改盘也不得污染兜底着法。 */
+  for (const expression of [
+    'return {x:7,y:7}', 'return {x:-1,y:0}', 'return {x:1.5,y:0}',
+    'b[97] = 2; throw new Error("engine failed after a temporary move")',
+    'b[97] = 2; return null',
+  ]) {
+    const f = workerFixture({ failCreateAt: 1 }), { w, d } = f;
+    w.eval('chooseAiMove = function(b) { ' + expression + '; }; scoreCell = function() { throw new Error("score failed"); };');
+    f.move(7, 7); f.tick();
+    assert(d.querySelectorAll('.cell.on').length === 2 && !w.eval('S.aiThinking'),
+      '非法返回或异常后必须落下一手合法棋：' + expression);
+    assert(w.eval('S.board[97]') === 2, '兜底必须根据未被引擎污染的棋盘选择最近空点：' + expression);
     f.close();
   }
 
