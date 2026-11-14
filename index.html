@@ -3597,7 +3597,11 @@ function scheduleAI() {
    这里依次退回：贪心单步评分（中等难度的无扰动版）→ 离中心最近的空点，
    无论如何都给出一手合法着法，让对局继续。 */
 function safeAiMove(board, diff, p) {
-  try { const mv = chooseAiMove(board, diff, p); if (mv) return mv; } catch (e) {}
+  try {
+    const mv = chooseAiMove(board.slice(), diff, p);
+    if (mv && Number.isInteger(mv.x) && Number.isInteger(mv.y) &&
+        inB(mv.x, mv.y) && board[idx(mv.x, mv.y)] === EMPTY) return mv;
+  } catch (e) {}
   let best = null;
   try {
     for (const i of candidateList(board)) {
