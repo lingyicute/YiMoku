@@ -210,9 +210,12 @@ const bad = [
   ['原型难度', { v: 1, mode: 'pvp', diff: '__proto__', side: 1, moves: [[7, 7]], acc: 0 }],
   ['数组难度', { v: 1, mode: 'pvp', diff: ['easy'], side: 1, moves: [[7, 7]], acc: 0 }],
   ['空计时', { v: 1, mode: 'pvp', diff: 'easy', side: 1, moves: [[7, 7]], acc: null }],
+  ['空串计时', { v: 1, mode: 'pvp', diff: 'easy', side: 1, moves: [[7, 7]], acc: '' }],
+  ['空白串计时', { v: 1, mode: 'pvp', diff: 'easy', side: 1, moves: [[7, 7]], acc: '   ' }],
   ['数组计时', { v: 1, mode: 'pvp', diff: 'easy', side: 1, moves: [[7, 7]], acc: [5] }],
   ['布尔计时', { v: 1, mode: 'pvp', diff: 'easy', side: 1, moves: [[7, 7]], acc: true }],
   ['非法执子', { v: 1, mode: 'pvp', diff: 'easy', side: 9, moves: [[7, 7]], acc: 0 }],
+  ['坐标多余字段', { v: 1, mode: 'pvp', diff: 'easy', side: 1, moves: [[7, 7, 1]], acc: 0 }],
   ['坐标为小数', { v: 1, mode: 'pvp', diff: 'easy', side: 1, moves: [[7.5, 7]], acc: 0 }],
   ['坐标越界', { v: 1, mode: 'pvp', diff: 'easy', side: 1, moves: [[99, 7]], acc: 0 }],
   ['重复落点', { v: 1, mode: 'pvp', diff: 'easy', side: 1, moves: [[7, 7], [7, 7]], acc: 0 }],
@@ -281,6 +284,34 @@ for (const [name, session] of bad) {
      d.querySelector('.cell[data-x="3"][data-y="3"]').classList.contains('last'));
   ok('撤销到空盘：无脚本异常', errors.length === 0, errors.join(' | '));
   close();
+}
+
+/* 2g) 读档期间不得把 yimoku:session 临时覆写为 null，也不得为执白存档误排开局 AI */
+{
+  const writes = [];
+  const errors = [];
+  const vc = new VirtualConsole();
+  vc.on('jsdomError', e => errors.push(e.message));
+  const dom = new JSDOM(html, {
+    url: 'http://localhost/', runScripts: 'dangerously', pretendToBeVisual: true,
+    virtualConsole: vc,
+    beforeParse(w) {
+      w.localStorage.setItem('yimoku:seenHelp', '1');
+      w.localStorage.setItem(KEY, JSON.stringify({
+        v: 1, mode: 'ai', diff: 'easy', side: 2, moves: [[7, 7]], acc: 3000
+      }));
+      const origSet = w.Storage.prototype.setItem;
+      w.Storage.prototype.setItem = function (k, v) {
+        if (k === KEY) writes.push(v);
+        return origSet.call(this, k, v);
+      };
+    }
+  });
+  ok('执白读档：无脚本异常', errors.length === 0, errors.join(' | '));
+  ok('执白读档：恢复 1 手且不把存档临时写成 null',
+     moveCount(dom.window.document) === 1 && !writes.includes('null'),
+     JSON.stringify(writes));
+  dom.window.close();
 }
 
 if (failures.length) {
