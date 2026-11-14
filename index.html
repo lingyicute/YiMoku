@@ -2453,9 +2453,10 @@ let TT_KEY = null, TT_VAL = null, TT_META = null, ttGen = 0;
 let zHashL = 0, zHashH = 0, zHashActive = false;
 function ensureTT() {
   if (TT_KEY === null) {                           // 懒分配：只有 hard/expert 真正用到（~10.5MB）
-    TT_KEY = new Float64Array(TT_SIZE);            // 52-bit 全键（0 视作空槽）
-    TT_VAL = new Float64Array(TT_SIZE);            // ply 归一化后的分值
-    TT_META = new Int32Array(TT_SIZE);             // flag(2b) | depth(5b) | ext(5b) | move(8b) | gen(12b)
+    const k = new Float64Array(TT_SIZE);           // 52-bit 全键（0 视作空槽）
+    const v = new Float64Array(TT_SIZE);           // ply 归一化后的分值
+    const m = new Int32Array(TT_SIZE);             // flag(2b) | depth(5b) | ext(5b) | move(8b) | gen(12b)
+    TT_KEY = k; TT_VAL = v; TT_META = m;
   }
 }
 function initZHash(b, ai) {
