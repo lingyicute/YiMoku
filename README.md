@@ -9,7 +9,7 @@ Made with ❤️ by [lingyicute](https://github.com/lingyicute).
 [🇺🇸 English] • [🌐 Source Code](https://github.com/lingyicute/YiMoku) • [🐛 Report Bug](https://github.com/lingyicute/YiMoku/issues)
 
 [![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0-orange.svg)](https://github.com/lingyicute/YiMoku/blob/main/LICENSE)
-[![Single File ~235 KiB](https://img.shields.io/badge/Single%20File-~235%20KiB-blue)](https://github.com/lingyicute/YiMoku/blob/main/index.html)
+[![Single File ~240 KiB](https://img.shields.io/badge/Single%20File-~240%20KiB-blue)](https://github.com/lingyicute/YiMoku/blob/main/index.html)
 [![Zero Dependencies](https://img.shields.io/badge/Dependencies-Zero-brightgreen)](https://github.com/lingyicute/YiMoku)
 [![No Ads No Tracking](https://img.shields.io/badge/Ads%20%26%20Trackers-Zero-brightgreen)](https://github.com/lingyicute/YiMoku)
 [![GitHub Stars](https://img.shields.io/github/stars/lingyicute/YiMoku?style=flat&color=yellow)](https://github.com/lingyicute/YiMoku)
@@ -26,7 +26,7 @@ Browser gomoku is usually one of two things: a board buried under banner ads, or
   - Standard **15×15** board, black opens, **five in a row** horizontally, vertically or diagonally wins (overlines count); a full board is a draw.
   - The winning run is **highlighted** and the latest move is **marked**, so you never lose track of the game.
   - **Undo** retracts your move *and* the AI's reply as one pair — and even works after the game ends, resuming the clock where it stopped.
-  - Live **move counter** and **elapsed-time** clock above the board; timing starts with your first stone.
+  - Live **move counter** and **elapsed-time** clock above the board; timing starts with the first stone on the board (the AI's opening move when you play white).
 - **🤖 An AI That Actually Plays**
   - **Four difficulties**: **简单 Easy** (noisy, occasionally misses your threats), **中等 Medium** (greedy with a light jitter), **困难 Hard** (alpha–beta under a **550 ms** budget) and **专家 Expert** (deeper iterative deepening under a **900 ms** budget).
   - **Choose your side** — take black and open, or take white and let the AI start automatically.
