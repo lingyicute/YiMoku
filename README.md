@@ -136,13 +136,13 @@ npm run test:session  # localStorage resume / corrupt-save regressions (also par
 npm run test:bench    # AI strength & latency benchmark                           (~1–2 min)
 ```
 
-`npm test` also runs in GitHub Actions on every push and pull request, together with `test:fuzz` and `test:bench` in separate jobs.
+`npm test` and `test:fuzz` run in GitHub Actions on pushes to `main` and on pull requests; `test:bench` runs in a separate job.
 
-- **`tests/selftest.js` + `tests/selftest-core.js`** — *zero-dependency*. The runner extracts the embedded `<script id="main">` from `index.html`, appends the development-only assertion body kept in `tests/selftest-core.js`, and runs it in Node: win detection in all four directions, shape classification, threat counting and terminal leaf evaluation, the `TW[0]` NaN regression, guaranteed win/block at every difficulty, and a full simulated game.
+- **`tests/selftest.js` + `tests/selftest-core.js`** — *zero-dependency*. The runner extracts the embedded `<script id="main">` from `index.html`, appends the development-only assertion body kept in `tests/selftest-core.js`, and runs it in Node: win detection in all four directions, shape classification, threat counting and terminal leaf evaluation, the `TW[0]` NaN regression, guaranteed wins at every difficulty and blocks from Medium up (plus Easy's deliberate miss), and a full simulated game.
 - **`tests/offline-contract.js`** — *zero-dependency*. Static guard that the shipped HTML has no external `src`/`href`, no `fetch`/XHR, no remote CSS/`@import`, no dev-only self-test code, and that the Worker engine markers are present.
 - **`tests/worker-contract.js`** — *zero-dependency*. Evaluates the `ENGINE_START`/`ENGINE_END` slice in a scope with no `document`/`window`, then simulates a real `chooseMove` message round-trip — this is what makes the self-bootstrapping Worker safe to refactor.
 - **`tests/smoke.js`** — *needs `npm install`*. Boots the real page inside jsdom and drives it end to end: the first-run help dialog, stone placement, AI replies, undo pairs, mode / difficulty / side switching, theme & palette popovers, record clearing, keyboard play, win highlighting and all three result-bar texts. Without jsdom it prints a skip notice instead of failing, so a bare clone still passes `npm test`.
-- **`tests/session.js`** — *needs `npm install`*. Boots the real page in jsdom to verify automatic save/restore of the board, move list, clock and settings, plus rejection of ten kinds of malformed saves.
+- **`tests/session.js`** — *needs `npm install`*. Boots the real page in jsdom to verify automatic save/restore of the board, move list, clock and settings, plus rejection of eighteen kinds of malformed saves.
 - **`tests/bench.js`** — *zero-dependency, slow on purpose*. Plays real AI-vs-AI matches and fails on regression: Expert must beat Easy ≥ 5/6 and Medium ≥ 3/4, and per-move latency must stay inside the engine budgets (550 ms hard / 900 ms expert) plus machine slack. Run it whenever the engine changes.
 
 ## 🤗 Contributing
