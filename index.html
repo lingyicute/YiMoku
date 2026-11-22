@@ -3355,7 +3355,6 @@ function syncBoardState() {
   boardEl.classList.toggle('t1', t === BLACK);
   boardEl.classList.toggle('t2', t === WHITE);
   boardEl.classList.toggle('human', !S.over && !S.aiThinking && isHuman(t));
-  boardEl.classList.toggle('over', S.over);
   boardEl.classList.toggle('showcur', S.cursorVisible && !S.over && !S.aiThinking && isHuman(t));
   const curIdx = S.cursorVisible && !S.over && !S.aiThinking && isHuman(t) ? idx(S.cursor.x, S.cursor.y) : -1;
   if (S.prevCursor !== curIdx) {
