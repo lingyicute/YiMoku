@@ -679,6 +679,31 @@ const click = el => el.dispatchEvent(new window.MouseEvent('click', { bubbles: t
     window.navigator.vibrate = origVib;
   }
 
+  /* ---- 首次用户手势之前（AI 执黑的开局手、读档后的自动应手）不得创建 AudioContext ---- */
+  {
+    let created = 0;
+    const nav = window.navigator, origAC = window.AudioContext;
+    const origUA = Object.getOwnPropertyDescriptor(nav, 'userActivation');
+    const activation = { hasBeenActive: false };
+    Object.defineProperty(nav, 'userActivation', { configurable: true, get: () => activation });
+    window.AudioContext = class {
+      constructor() { created++; this.state = 'running'; this.currentTime = 0; this.sampleRate = 8000; this.destination = {}; }
+      createBuffer() { return { getChannelData: () => new Float32Array(56) }; }
+      createBufferSource() { return { connect() {}, start() {} }; }
+      createBiquadFilter() { return { frequency: { setValueAtTime() {} }, Q: { setValueAtTime() {} }, connect() {} }; }
+      createGain() { return { gain: { setValueAtTime() {}, exponentialRampToValueAtTime() {} }, connect() {} }; }
+      createOscillator() { return { frequency: { setValueAtTime() {} }, connect() {}, start() {}, stop() {} }; }
+    };
+    window.eval('audioCtx = null; S.sound = true; playStoneSound(false);');
+    assert(created === 0, '尚无用户手势时不应创建 AudioContext（音效会攒到首次手势时叠放）');
+    activation.hasBeenActive = true;
+    window.eval('playStoneSound(false);');
+    assert(created === 1, '有过用户手势后应正常创建 AudioContext');
+    window.eval('audioCtx = null;');
+    window.AudioContext = origAC;
+    if (origUA) Object.defineProperty(nav, 'userActivation', origUA); else delete nav.userActivation;
+  }
+
   /* ---- 跨标签页 storage 事件同步主题、配色与音效 ---- */
   {
     window.localStorage.setItem('yimoku:theme', 'light');
