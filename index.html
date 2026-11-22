@@ -3002,6 +3002,10 @@ function clearWinTimer() {
 function ensureAudio() {
   const AudioCtor = window.AudioContext || window.webkitAudioContext;
   if (!AudioCtor) return null;
+  /* 还没有过用户手势（AI 执黑的开局手、读档后的自动应手）时不建上下文：自动播放策略会让它
+     停在 suspended，排进去的音效要攒到首次手势 resume 时才与那一手的落子声叠在一起响。 */
+  const ua = navigator.userActivation;
+  if (!audioCtx && ua && !ua.hasBeenActive) return null;
   if (!audioCtx) audioCtx = new AudioCtor();
   if (audioCtx.state === 'suspended') {
     const p = audioCtx.resume();
