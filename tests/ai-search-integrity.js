@@ -29,6 +29,16 @@ function engine(options = {}) {
         try { return abSearch(b, ai, side, depth, -WIN_V, WIN_V, 0, 0, 1e9, 0); }
         finally { incActive = false; incDirty = lineDirty = -1; }
       },
+      topKWinTie(b, side) {
+        incActive = false;
+        const full = topKScored(b, side, 6, 2)[0].i;
+        initIncTable(b); incActive = true;
+        try {
+          const scored = topKScored(b, side, 6, 2)[0].i;
+          const n = topKPacked(b, side, 6, 2, 0);
+          return { full, scored, n, packed: AB_CAND[0] & 255 };
+        } finally { incActive = false; incDirty = lineDirty = -1; }
+      },
       rootIterations(b, ai, i, fakeWin = false) {
         const original = abSearch, depths = [];
         abSearch = function(...args) {
@@ -169,6 +179,13 @@ for (let sample = 0; sample < 24; sample++) test('PVS/full-window and incrementa
   assert.equal(c.search(b, side, side, depth, false), value);
   assert.equal(fast.search(b, side, side, depth, true), value);
   assert.deepEqual(b, before);
+});
+test('topKPacked picks the lowest-index five when ACT_R2 discovers a higher index first', () => {
+  const e = engine(), b = new Uint8Array(225);
+  // (5,0)=5 is scanned before (3,1)=18 in initIncTable, so its radius-2 neighbour
+  // (5,2)=35 enters ACT_R2 ahead of (4,1)=19. Both complete five for BLACK.
+  for (const [x, y] of [[5, 0], [5, 1], [5, 3], [5, 4], [0, 1], [1, 1], [2, 1], [3, 1]]) b[at(x, y)] = 1;
+  assert.deepEqual(e.topKWinTie(b, 1), { full: 19, scored: 19, n: 1, packed: 19 });
 });
 console.log('AI search integrity: ' + passed + ' passed, ' + failed + ' failed');
 if (failed) process.exitCode = 1;

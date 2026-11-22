@@ -2308,13 +2308,14 @@ function topKPacked(b, side, k, radius, plyBase) {
   const isB = side === BLACK;
   const C_TOT = isB ? C_SB9 : C_SW9;
   const mShift = isB ? 0 : 8, oShift = isB ? 8 : 0, hShift = isB ? 4 : 12;
-  let m = 0, blkI = -1, blkM = 0, blkS = -Infinity, blkH = 0, worstS = -Infinity, worstI = 1e9;
+  let m = 0, winI = 1e9, blkI = -1, blkM = 0, blkS = -Infinity, blkH = 0, worstS = -Infinity, worstI = 1e9;
   for (let q = 0; q < clLen; q++) {
     const i = buf[q];
     if (b[i]) continue;
     const meta = C_META[i];
     const mm = (meta >> mShift) & 15;
-    if (mm === T.FIVE) { AB_CAND[plyBase] = i | (T.FIVE << 8); return 1; }
+    if (mm === T.FIVE) { if (i < winI) winI = i; continue; }
+    if (winI < 1e9) continue;
     const oo = (meta >> oShift) & 15;
     if (oo === T.FIVE) {
       const sv = C_TOT[i] + HIST[i];
@@ -2333,6 +2334,7 @@ function topKPacked(b, side, k, radius, plyBase) {
       worstS = KS[m - 1]; worstI = KI[m - 1];
     }
   }
+  if (winI < 1e9) { AB_CAND[plyBase] = winI | (T.FIVE << 8); return 1; }
   if (blkI >= 0) { AB_CAND[plyBase] = blkI | (blkM << 8) | (blkH << 12); return 1; }
   for (let j = 0; j < m; j++) {
     AB_CAND[plyBase + j] = KI[j] | (KM[j] << 8) | (KH[j] << 12);
