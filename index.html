@@ -1397,14 +1397,14 @@ function evalBoard(b, ai) {
    语义：攻方每一手必须成五、或成四（在盘上留下 ≥1 个"下一手即连五"的点）；
          防方只有三种抵抗——自己立刻成五、把挡点下成自己的五、挡。
          留下 ≥2 个互异连五点即判胜（挡一漏一）。
-   这里的写法刻意选择"朴素但显然正确"：每个节点都用全局扫描 fivePts() 重算双方威胁，
-   不跨层传递任何增量威胁表。上一版我用了跨层复用的威胁列表，出现过错报（假杀），
-   对棋类引擎来说"误报必胜"比"漏杀"严重得多，所以宁可每层多花 ~100µs。
+   威胁点一律在当前节点现算：pointTierEx 评估候选手时顺带给出该手落下后的全部连五点
+   （THR_BUF），随即在同一节点使用，不跨层传递任何增量威胁表。早期版本跨层复用威胁
+   列表，出现过错报（假杀）——对棋类引擎来说"误报必胜"比"漏杀"严重得多。
    保守性：
      · 只有逐手验证到"成五"才返回胜；任何分支防不住就整条作废；
      · 节点上限 VCF_CAP + 时间闸门，超限立即放弃 → 上层照旧走 α-β，不会因此下错手。
-   攻方候选用 pointTier 过滤（tier ≥ FOUR 才是逼迫手），它顺带填的 THR_BUF 只用于
-   快速判"是否成四"，胜负结论一律由 fivePts 的全盘扫描给出。
+   攻方候选用 pointTierEx 过滤（tier ≥ FOUR 才是逼迫手）。防方的连五点同样逐手跟踪：
+   根节点先确认防方没有连五点，此后防方挡四时造出的反冲四一律作为 forced 交回攻方。
    ============================================================ */
 const VCF_CAP = 900;                           // 每次决策允许的 VCF 节点上限
 const VCF_MAXLEN = { hard: 6, expert: 9 };     // 攻方最多连续冲几手（专家看得更远）
@@ -1415,21 +1415,10 @@ function vcfStopped() {
   if (vcfBudget <= 0 || now() - vcfT0 >= vcfDeadline) { vcfBudget = 0; return true; }
   return false;
 }
-/* p 的全部"下一手即连五"的点（全局扫描，不去重方向，天然去重格子） */
-function fivePts(b, p) {
-  const out = [];
-  const cl = candidateList(b, 1);
-  for (let q = 0; q < cl.length; q++) {
-    const i = cl[q];
-    b[i] = p; const w = makesFive(b, i % N, (i / N) | 0); b[i] = EMPTY;
-    if (w) out.push(i);
-  }
-  return out;
-}
 function makesFiveNow(b, i, p) { b[i] = p; const w = makesFive(b, i % N, (i / N) | 0); b[i] = EMPTY; return w; }
 /* 递归 VCF 的次序化候选：先看直接成五，再优先探索双威胁（OFOUR），
    最后是单威胁（FOUR，内部按伴生威胁 sub = hi*4+mid 降序优先搜冲四活三）。
-   直接复用 pointTierEx 产出的 THR_BUF，省去 vcfAnswer 里每次全盘扫描 fivePts。 */
+   直接复用 pointTierEx 产出的 THR_BUF，vcfAnswer 不必再全盘扫描连五点。 */
 function vcfCandidates(b, atk) {
   const clLen = candidateBuf(b, 2), out = [];
   for (let q = 0; q < clLen; q++) {
@@ -1445,7 +1434,7 @@ function vcfCandidates(b, atk) {
 /* 轮 atk 走（盘上已是当前状态）：返回攻方所需手数，0 = 未发现强制杀
    ⑭ 修复：
      · c.tier === T.FIVE 时攻方当场连五即胜（返回 1）；旧版误将其送入 vcfAnswer，
-       当五连两端被封死时 fivePts(b, atk) 为空，会被误判为 0（杀失败）。
+       当五连两端被封死时盘上已无后续连五点，会被误判为 0（杀失败）。
      · 若防方上一手挡四时顺带形成了自己的反冲四（forced >= 0），atk 本手唯有
        挡住 forced 同时反冲四（反先）一条路可走，无需遍历全盘候选。 */
 function vcfStep(b, atk, maxLen, forced) {
@@ -1473,15 +1462,12 @@ function vcfStep(b, atk, maxLen, forced) {
   }
   return 0;
 }
-/* 攻方刚落子（盘上含其新子），轮到防方：返回攻方还需的手数，0 = 被防住 */
+/* 攻方刚落子（盘上含其新子），轮到防方：返回攻方还需的手数，0 = 被防住。
+   m0/m1/mn = 这一手造出的连五点及其个数（调用方落子前由 pointTierEx 的 THR_BUF 给出）；
+   前提：防方此刻没有连五点（根节点已查，此后每个反冲四都经 forced 交回攻方）。 */
 function vcfAnswer(b, atk, maxLen, m0, m1, mn) {
   if (maxLen <= 0 || vcfStopped()) return 0;
   const def = other(atk);
-  if (mn === undefined) {
-    if (fiveThreatCount(b, def, 1) > 0) return 0;     // 防方随时可成五，这条线不成立
-    const mine = fivePts(b, atk);
-    mn = mine.length; m0 = mine[0]; m1 = mine[1];
-  }
   if (!mn) return 0;
   if (mn >= 2) {
     /* 双威胁：防方任选一个挡；只要有一种挡法能顺手成五，杀就不成立。 */
