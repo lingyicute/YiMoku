@@ -10,7 +10,7 @@ Nebulove 字体子集化 & 内嵌
   python3 scripts/subset_font.py --all-text          # 保守模式：文件里出现的字符全收
   python3 scripts/subset_font.py --extra-chars glyphs.txt
 """
-import argparse, base64, io, os, re, sys, tempfile, urllib.request
+import argparse, base64, io, os, re, sys, tempfile, urllib.parse, urllib.request
 FONT_URL = "https://raw.githubusercontent.com/lingyicute/Nebulove/main/Nebulove.woff2"
 # 不再写入远程地址
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -119,8 +119,11 @@ def main():
     print("需要保留的字符：%d 个（%s）" % (len(chars), mode))
 
     with tempfile.TemporaryDirectory() as tmpdir:
-        ttf = args.ttf or os.path.join(tmpdir, "Nebulove.woff2")
-        if not args.ttf:
+        ttf = args.ttf
+        if not ttf:
+            # 临时文件沿用 URL 的文件名：下方按扩展名标注源格式，--font-url 换源后不能仍标成 woff2
+            name = os.path.basename(urllib.parse.urlparse(args.font_url).path)
+            ttf = os.path.join(tmpdir, name if name.strip(".") else "font")
             print("下载完整字体：%s" % args.font_url)
             download(args.font_url, ttf)
         ttf_size = os.path.getsize(ttf)
