@@ -736,7 +736,7 @@ const AI_LINE_CAND = true, AI_KILLER = true, AI_TT_DEPTH = true;
 /* ⑳ VCT（连续威胁搜索，见 vctRoot 处说明）。VCF 的超集：允许攻方造活三，
       因此「三 → 活四 → 五」这类最常见的中盘强制胜也能直接证明，而不是靠深度撞见。 */
 const AI_VCT = true;
-/* ㉑ 
+/* ㉑
    AI_LEAF_S3    叶节点单活三准胜：轮走方持有严格活三、且对方在盘上没有连五点时，
                  「三→活四→五」是可证明的强制胜（与 evalForcedLine 的既有 ⑬ 判据对齐）。
                  要求 AI_OPENTHREE_STRICT 同时开启——非严格活三转不成活四，准胜不成立。

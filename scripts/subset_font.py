@@ -4,7 +4,7 @@
 Nebulove 字体子集化 & 内嵌
 
   pip install fonttools brotli
-  
+
   python3 scripts/subset_font.py                     # 就地
   python3 scripts/subset_font.py --check             # 只报告，不写入
   python3 scripts/subset_font.py --all-text          # 保守模式：文件里出现的字符全收
