@@ -198,9 +198,10 @@ header{
 @keyframes popin{from{opacity:0; transform:translateY(-6px)}to{opacity:1; transform:none}}
 .pop-title{font-size:13.5px; font-weight:800; color:var(--text2); margin:0 0 12px 4px}
 .swatches{display:grid; grid-template-columns:repeat(4,1fr); gap:12px}
+/* 每个色块自带 data-accent：这里的 --sw 解析为该配色自己的色块色，而非当前所选配色 */
 .swatch{
   width:52px; height:52px; border-radius:50%; border:0; cursor:pointer; position:relative;
-  background:var(--sw-c); display:grid; place-items:center; padding:0;
+  background:var(--sw); display:grid; place-items:center; padding:0;
   transition:transform .12s;
 }
 .swatch:hover{transform:scale(1.06)}
@@ -3847,7 +3848,6 @@ function buildSwatches() {
     b.className = 'swatch'; b.dataset.accent = a;
     b.title = NAMES[a] || a;
     b.setAttribute('aria-label', NAMES[a] || a);
-    b.style.setProperty('--sw-c', swatchColor(a));
     b.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7"/></svg>';
     b.addEventListener('click', () => {
       document.documentElement.dataset.accent = a;
@@ -3858,10 +3858,6 @@ function buildSwatches() {
     wrap.appendChild(b);
   });
   syncSwatches();
-}
-function swatchColor(a) {
-  return ({ purple: '#A78BFA', blue: '#6E9BE8', teal: '#5FD6C8', green: '#78E08F',
-    yellow: '#EFD46B', orange: '#F0A868', pink: '#F472A0', red: '#F0716B' })[a];
 }
 function syncSwatches() {
   const cur = document.documentElement.dataset.accent || 'purple';
