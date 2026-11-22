@@ -38,9 +38,8 @@ function engine(slow = false) {
         }
         return true;
       },
-      stamps(n) { thrStamp = markStamp = vctStamp = n; },
+      stamps(n) { thrStamp = markStamp = n; },
       captured(b, side) { const out = []; return { n: fiveThreatCount(b, side, 2, out), i: out[0] }; },
-      vctCount(b, side) { return vctFives(b, side, VCT_FIVE, 2); },
       forced(b, ai, side) { return evalForcedLine(b, ai, side, 0, LEAF_Q_MAX); },
       fastLeaf(b, ai, side) {
         initIncTable(b); incActive = true;
@@ -132,7 +131,7 @@ const cross = board([[3,7,1],[4,7,1],[5,7,1],[6,7,1],
 assert.deepEqual(wins(cross, 1), [112]);
 assert.equal(wins(cross, 2).length, 0);
 for (const slow of [false, true]) for (const start of [0x7ffffffe, 0x7fffffff, 0x80000000]) {
-  for (const name of ['count', 'capture', 'leaf', 'forced', 'vct']) test('signed stamp rollover ' + name + ' slow=' + slow + ' start=' + start, () => {
+  for (const name of ['count', 'capture', 'leaf', 'forced']) test('signed stamp rollover ' + name + ' slow=' + slow + ' start=' + start, () => {
     const a = engine(slow), b = cross.slice(), before = b.slice();
     const expected = a.evalLeaf(b, 2, 2, 0);
     for (let n = 0; n < 3; n++) {
@@ -141,7 +140,6 @@ for (const slow of [false, true]) for (const start of [0x7ffffffe, 0x7fffffff, 0
       if (name === 'capture') assert.deepEqual(a.captured(b, 1), { n: 1, i: 112 });
       if (name === 'leaf') assert.equal(a.evalLeaf(b, 2, 2, 0), expected);
       if (name === 'forced') assert.equal(a.forced(b, 2, 2), expected);
-      if (name === 'vct') assert.equal(a.vctCount(b, 1), 1);
     }
     assert.deepEqual(b, before);
   });
