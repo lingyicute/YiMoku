@@ -391,6 +391,7 @@ for (const [name, session] of bad) {
   ok('执白读档：恢复 1 手且不把存档临时写成 null',
      moveCount(dom.window.document) === 1 && !writes.includes('null'),
      JSON.stringify(writes));
+  ok('执白读档：重放前不误排开局 AI 任务', dom.window.eval('!S.aiThinking && S.aiTimer === null && S.aiReqId === 1'));
   dom.window.close();
 }
 

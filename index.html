@@ -3201,7 +3201,6 @@ function restoreSession() {
     S.mode = s.mode; S.diff = s.diff; S.side = s.side;
     saveSettings(); syncPills();
     restartGame(true);                                // 清空棋盘/计时/在途 AI 任务（不动存档）
-    cancelAI();                                       // 作废 restartGame 可能投出的开局任务
     for (let k = 0; k < s.moves.length; k++) {
       const [x, y] = s.moves[k], i = idx(x, y), p = k % 2 === 0 ? BLACK : WHITE;
       S.board[i] = p;
@@ -3710,8 +3709,10 @@ function restartGame(keepSave = false) {
   S.prevLast = -1; S.prevCursor = -1; S.lastRecordSnapshot = null;
   resultBar.classList.remove('show');
   updateStats(); renderMoveList(); updateStatus();
-  if (!keepSave) saveSession();
-  if (S.mode === 'ai' && !isHuman(BLACK)) scheduleAI();   // AI 执黑则自动开局
+  if (!keepSave) {
+    saveSession();
+    if (S.mode === 'ai' && !isHuman(BLACK)) scheduleAI(); // AI 执黑则自动开局
+  }
 }
 
 /* ---------- 设置切换 ---------- */
