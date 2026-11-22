@@ -279,7 +279,7 @@ const click = el => el.dispatchEvent(new window.MouseEvent('click', { bubbles: t
     // 此时已有 1 局战绩
     S.records = freshRecords();
     S.lastRecordSnapshot = null;
-    store.setJSON("records", S.records);
+    store.set("records", JSON.stringify(S.records));
     renderRecords();
     if (S.records.total !== 0) throw new Error("清除后战绩应为 0");
     undo();

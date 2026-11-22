@@ -2954,8 +2954,7 @@ function guardAgainstVcf(b, ai, pick, ordered, t0, budget) {
 const store = {
   get(k, d) { try { const v = localStorage.getItem('yimoku:' + k); return v === null ? d : v; } catch (e) { return d; } },
   set(k, v) { try { localStorage.setItem('yimoku:' + k, v); return true; } catch (e) { return false; } },
-  getJSON(k, d) { try { const v = localStorage.getItem('yimoku:' + k); return v ? JSON.parse(v) : d; } catch (e) { return d; } },
-  setJSON(k, v) { try { localStorage.setItem('yimoku:' + k, JSON.stringify(v)); } catch (e) {} }
+  getJSON(k, d) { try { const v = localStorage.getItem('yimoku:' + k); return v ? JSON.parse(v) : d; } catch (e) { return d; } }
 };
 
 /* localStorage 可能含有任意 JSON：避免对象强制转换抛错，也不要把原型属性当成难度。 */
