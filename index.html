@@ -1176,7 +1176,7 @@ function opponentThreesForced(b, side) {
       if (v === side) cs++; else if (v === opp) co++;
     }
     for (let st = 0; ; st++) {
-      if (cs === 3 && co === 0) return false; // a counter-four, not a loss proof
+      if (cs >= 3 && co === 0) return false; // a five or counter-four, not a loss proof
       if (co === 3 && cs === 0) has3O = 1;
       if (st + 5 >= len) break;
       const vo = b[line[st]], vn = b[line[st + 5]];

@@ -167,6 +167,11 @@ for (let n = 0; n < targets.length; n++) test('reduced defence proof fixture ' +
   equivalent(targets[n], 1);
   assert.equal(e.proof(targets[n], 1), n === 0 || n >= 3);
 });
+test('opponentThreesForced matches reference when side holds an edge four without a 3+2 window', () => {
+  const b = board([[0,0,1],[1,0,1],[2,0,1],[3,0,1],[5,0,2], [5,7,2],[6,7,2],[7,7,2],[7,5,2],[7,6,2]]);
+  assert.equal(e.proof(b, 1), false);
+  assert.equal(e.reference(b, 1), false);
+});
 let seed = 0x3a715b9;
 function rnd(n) { seed ^= seed << 13; seed ^= seed >>> 17; seed ^= seed << 5; return (seed >>> 0) % n; }
 for (let n = 0; n < 300; n++) test('proof equivalence with random obstacles ' + n, () => {
