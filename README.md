@@ -39,7 +39,7 @@ Browser gomoku is usually one of two things: a board buried under banner ads, or
   - Saves are validated move by move (integer coordinates, on-board, no duplicate points, no finished game); a corrupt save is discarded instead of breaking the page.
   - Background AI replies and clock updates do not overwrite a newer save from another tab; a deliberate move in the current tab takes ownership again.
 - **📜 Move List & Records**
-  - A running game record with **board coordinates** (`A–O` × `1–15`, letter `I` skipped, Go-style).
+  - A running game record with **board coordinates** (`A–P` × `1–15`, letter `I` skipped, Go-style).
   - **Records per mode**: AI wins / losses / draws with win rate, PvP results by colour, and your **fastest win** (fewest moves, with time and difficulty); one click — with a confirm — wipes the slate clean.
 - **🎨 Material You & Polished Design**
   - **Dynamic theming**: eight accent hues (紫罗兰, 晴空蓝, 薄荷青, 青草绿, 暖阳黄, 落日橙, 樱花粉, 珊瑚红), each generating a complete Material token set for both modes.
