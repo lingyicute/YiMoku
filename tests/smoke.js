@@ -181,10 +181,13 @@ const click = el => el.dispatchEvent(new window.MouseEvent('click', { bubbles: t
   /* ---- 键盘操作 ---- */
   const kd = (key, target) => (target || document.body)
     .dispatchEvent(new window.KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }));
-  /* 焦点在链接上时回车归浏览器处理（跳转），不能被拦截成落子 */
+  /* 焦点在链接上时回车与空格归浏览器处理，不能被拦截成落子 */
   const linkEnter = new window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true });
   document.querySelector('footer a').dispatchEvent(linkEnter);
   assert(!linkEnter.defaultPrevented, '链接上的回车不被拦截');
+  const linkSpace = new window.KeyboardEvent('keydown', { key: ' ', bubbles: true, cancelable: true });
+  document.querySelector('footer a').dispatchEvent(linkSpace);
+  assert(!linkSpace.defaultPrevented, '链接上的空格不被拦截成落子');
   /* 光标从 H8 移到 L9：AI 的应手只会落在 H8 两格以内，L9 必为空点 */
   $('restartBtn').focus();                       // 模拟刚用鼠标点过棋盘外的按钮
   kd('ArrowRight'); kd('ArrowRight'); kd('ArrowRight'); kd('ArrowDown');
@@ -195,9 +198,13 @@ const click = el => el.dispatchEvent(new window.MouseEvent('click', { bubbles: t
   assert(tabStops.length === 1 && tabStops[0] === document.querySelector('.cell.cursor'),
     '棋盘只占一个 Tab 停靠点且跟随光标（实际：' + tabStops.length + ' 个）');
   const stonesBefore = document.querySelectorAll('.cell.on').length;
-  kd(' ');
+  const repeatEnter = new window.KeyboardEvent('keydown', { key: 'Enter', repeat: true, bubbles: true, cancelable: true });
+  document.activeElement.dispatchEvent(repeatEnter);
+  assert(repeatEnter.defaultPrevented && document.querySelectorAll('.cell.on').length === stonesBefore,
+    '棋盘格聚焦时按住回车自动连发应被拦截且不落子');
+  kd(' ', document.activeElement);
   assert(document.querySelectorAll('.cell.on').length === stonesBefore + 1 &&
-    document.querySelector('.cell[data-x="10"][data-y="8"]').classList.contains('on1'), '空格在光标处落子');
+    document.querySelector('.cell[data-x="10"][data-y="8"]').classList.contains('on1'), '空格在聚焦的光标格落子');
 
   /* ---- 光标停在已有棋子上时，不得用半透明的落子预览盖住它 ---- */
   click(document.querySelector('[data-mode="pvp"]'));

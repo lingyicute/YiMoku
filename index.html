@@ -3878,8 +3878,8 @@ function onKey(e) {
     return;
   }
   if (k === ' ' || k === 'enter') {
-    /* 焦点在按钮（含棋盘格）上时交给原生激活，避免拦截；回车对链接同理 */
-    if (e.target && e.target.closest && e.target.closest(k === 'enter' ? 'button, a[href]' : 'button')) return;
+    /* 焦点在棋盘外的按钮或链接上时交给原生激活，避免拦截 */
+    if (e.target && e.target.closest && e.target.closest('button:not(.cell), a[href]')) return;
     e.preventDefault();
     if (e.repeat || S.over || S.aiThinking) return;
     S.cursorVisible = true;
