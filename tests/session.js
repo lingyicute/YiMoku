@@ -208,6 +208,20 @@ const clickCell = (w, d, x, y) => {
   ok('存储被禁用时保留内存中的战绩', w.eval('S.records.total') === 2);
   close();
 }
+{
+  const { w, d, close } = boot({ v: 1, mode: "pvp", diff: "easy", side: 1, moves: [[7, 7]], acc: 5000 });
+  const origSet = w.Storage.prototype.setItem;
+  let blockOnce = true;
+  w.Storage.prototype.setItem = function(k, v) {
+    if (k === KEY && blockOnce) { blockOnce = false; throw new Error("QuotaExceededError"); }
+    return origSet.call(this, k, v);
+  };
+  clickCell(w, d, 8, 8);
+  w.dispatchEvent(new w.Event("pagehide"));
+  const saved = JSON.parse(w.localStorage.getItem(KEY));
+  ok("偶发写档失败后 pagehide 仍能补写最新棋谱", saved && saved.moves.length === 2, JSON.stringify(saved));
+  close();
+}
 
 /* 2c) 损坏的战绩 / 配色偏好不得渗入界面（NaN、负数、非法配色） */
 {

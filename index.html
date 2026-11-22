@@ -3164,8 +3164,8 @@ function saveSession(onlyIfUnchanged = false) {
     v: 1, mode: S.mode, diff: S.diff, side: S.side,
     moves: S.moves.map(m => [m.x, m.y]), acc: Math.round(elapsedMs())
   };
-  lastSessionJSON = JSON.stringify(session);
-  store.set('session', lastSessionJSON);
+  const raw = JSON.stringify(session);
+  if (store.set('session', raw)) lastSessionJSON = raw;
 }
 function saveSessionClock() {
   /* 仅补写本页最后一次保存的局面；另一标签页已更新或删除时不要覆盖它。 */
