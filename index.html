@@ -3705,7 +3705,7 @@ function restartGame(keepSave = false) {
   S.started = false; S.acc = 0; S.timerRun = false; S.cursorVisible = false;
   syncClockTick();
   markWin(null); markLast(-1);
-  for (let i = 0; i < N * N; i++) { if (cellsEl[i].classList.contains('on')) paintCell(i); cellsEl[i].classList.remove('cursor', 'win', 'last'); }
+  for (let i = 0; i < N * N; i++) { if (cellsEl[i].classList.contains('on')) paintCell(i); cellsEl[i].classList.remove('cursor', 'win', 'last', 'wig'); }
   S.prevLast = -1; S.prevCursor = -1; S.lastRecordSnapshot = null;
   resultBar.classList.remove('show');
   updateStats(); renderMoveList(); updateStatus();
