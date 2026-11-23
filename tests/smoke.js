@@ -320,12 +320,17 @@ const click = el => el.dispatchEvent(new window.MouseEvent('click', { bubbles: t
   assert(document.querySelectorAll('.cell.on').length === 0, '面板打开时点击棋盘不得落子');
   assert(!$('palettePop').classList.contains('open'), '外部点击关闭配色面板');
 
-  /* ---- 重开清掉棋谱高亮，空盘上不得残留闪框 ---- */
+  /* ---- 重开清掉棋谱高亮与无效落子抖动类，空盘上不得残留状态类 ---- */
+  window.eval('setMode("pvp")');
   click(document.querySelector('.cell[data-x="7"][data-y="7"]'));
+  click(document.querySelector('.cell[data-x="7"][data-y="7"]'));
+  assert(document.querySelector('.cell[data-x="7"][data-y="7"]').classList.contains('wig'), '重复点击已占格触发抖动类');
   click($('mList').children[0]);
   assert(document.querySelector('.cell[data-x="7"][data-y="7"]').classList.contains('flash'), '棋谱高亮已点亮');
   click($('restartBtn'));
   assert(document.querySelectorAll('.cell.flash').length === 0, '重开后清除棋谱高亮');
+  assert(document.querySelectorAll('.cell.wig').length === 0, '重开后清除抖动类');
+  window.eval('setMode("ai")');
 
   /* ---- 计时只在显示的秒数变化时写 DOM ---- */
   {
