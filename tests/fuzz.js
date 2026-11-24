@@ -99,12 +99,12 @@ for (let t = 0; t < BOARDS; t++) {
     for (const side of [FULL.BLACK, FULL.WHITE])
       ck(FULL.evalLeaf(b, ai, side, ply) === NO_LEAF.evalLeaf(b, ai, side, ply), 'evalLeaf 等价 t=' + t);
   }
-  for (const r of [undefined, 1, 2]) {
+  for (const r of [undefined, 1, 2, 3]) {
     const c1 = FULL.candidateList(b, r);
-    // r=1 时两版严格逐位一致；r=2 时 AI_LINE_CAND 收紧了马步无威胁格
-    if (r === 1) {
+    // r=1 与 r>=3 时两版严格逐位一致；仅 r=2 时 AI_LINE_CAND 收紧了马步无威胁格
+    if (r === 1 || r === 3) {
       const c2 = NO_LEAF.candidateList(b, r);
-      ck(c1.length === c2.length && c1.every((v, i) => v === c2[i]), 'candidateList r=1 等价 t=' + t);
+      ck(c1.length === c2.length && c1.every((v, i) => v === c2[i]), 'candidateList r=' + r + ' 等价 t=' + t);
     } else {
       // 验证收紧后的每一个候选确实都是原版候选的子集
       const c2 = NO_LEAF.candidateList(b, r);
