@@ -3653,9 +3653,10 @@ function safeAiMove(board, diff, p) {
 function tryPlace(x, y) {
   if (S.over || S.aiThinking) return;
   const p = turn();
-  if (!isHuman(p)) return;
-  if (!inB(x, y) || S.board[idx(x, y)]) {
-    const el = cellsEl[idx(x, y)];
+  if (!isHuman(p) || !inB(x, y)) return;
+  const i = idx(x, y);
+  if (S.board[i]) {
+    const el = cellsEl[i];
     if (el) { el.classList.remove('wig'); void el.offsetWidth; el.classList.add('wig'); }
     return;
   }
