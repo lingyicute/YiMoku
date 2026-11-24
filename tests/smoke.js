@@ -78,6 +78,14 @@ const click = el => el.dispatchEvent(new window.MouseEvent('click', { bubbles: t
   assert(document.activeElement === $('clearCancel'), '末个按钮按 Tab 回到首个');
   key('Tab', { shiftKey: true });
   assert(document.activeElement === $('clearConfirm'), '首个按钮按 Shift+Tab 回到末个');
+  const clearCard = $('modalClear').querySelector('.mcard');
+  clearCard.tabIndex = -1;
+  clearCard.focus();
+  const cardShiftTab = new window.KeyboardEvent('keydown', { key: 'Tab', shiftKey: true, bubbles: true, cancelable: true });
+  document.dispatchEvent(cardShiftTab);
+  assert(cardShiftTab.defaultPrevented && document.activeElement === $('clearConfirm'),
+    '焦点在模态卡片容器上按 Shift+Tab 不得逃出模态框');
+  clearCard.removeAttribute('tabindex');
   key('Escape');
   assert(!$('modalClear').classList.contains('open'), 'Esc 关闭确认框');
   assert(document.activeElement === $('menuBtn'), '确认框关闭后焦点回到菜单按钮（实际：' + (document.activeElement && document.activeElement.id) + '）');
