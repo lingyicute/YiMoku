@@ -3087,6 +3087,8 @@ function playWinSound() {
 function triggerHaptic(type) {
   try {
     if (!navigator.vibrate) return;
+    const ua = navigator.userActivation;
+    if (ua && !ua.hasBeenActive) return;
     if (type === 'win') {
       // 保证强度的轻快庆祝节奏：短促多段敲击脉冲，段间间隔适中
       navigator.vibrate([40, 60, 40, 60, 60, 80, 80]);
