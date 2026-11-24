@@ -2543,7 +2543,7 @@ function abSearch(b, ai, side, depth, alpha, beta, ply, t0, budget, ext) {
       }
     }
   }
-  if (AI_KILLER && cLen > 2) {                     // ⑲-c 杀手着法紧随 TT 着法之后
+  if (AI_KILLER && cLen > 2 && ply < 64) {         // ⑲-c 杀手着法紧随 TT 着法之后
     for (let s = 0; s < 2; s++) {
       const km = KILL[ply * 2 + s];
       if (km < 0) continue;
@@ -2597,7 +2597,7 @@ function abSearch(b, ai, side, depth, alpha, beta, ply, t0, budget, ext) {
       if (val >= beta) {
         /* ⑧ 历史启发：截断着法按深度²加权（封顶 HIST_CAP） */
         if (bestI < N * N) { const h = HIST[bestI] + depth * depth; HIST[bestI] = h > HIST_CAP ? HIST_CAP : h; }
-        if (AI_KILLER && bestI < N * N && KILL[ply * 2] !== bestI) { KILL[ply * 2 + 1] = KILL[ply * 2]; KILL[ply * 2] = bestI; }
+        if (AI_KILLER && ply < 64 && bestI < N * N && KILL[ply * 2] !== bestI) { KILL[ply * 2 + 1] = KILL[ply * 2]; KILL[ply * 2] = bestI; }
         ttStore(slot, key, val, TT_LOWER, depth, ext, bestI, ply);
         if (rootCall) zHashActive = false;
         return val;
@@ -2607,7 +2607,7 @@ function abSearch(b, ai, side, depth, alpha, beta, ply, t0, budget, ext) {
       if (v < val) { val = v; bestI = ci; }
       if (val <= alpha) {
         if (bestI < N * N) { const h = HIST[bestI] + depth * depth; HIST[bestI] = h > HIST_CAP ? HIST_CAP : h; }
-        if (AI_KILLER && bestI < N * N && KILL[ply * 2] !== bestI) { KILL[ply * 2 + 1] = KILL[ply * 2]; KILL[ply * 2] = bestI; }
+        if (AI_KILLER && ply < 64 && bestI < N * N && KILL[ply * 2] !== bestI) { KILL[ply * 2 + 1] = KILL[ply * 2]; KILL[ply * 2] = bestI; }
         ttStore(slot, key, val, TT_UPPER, depth, ext, bestI, ply);
         if (rootCall) zHashActive = false;
         return val;
