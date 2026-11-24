@@ -100,7 +100,7 @@ def main():
     ap.add_argument("--check", action="store_true", help="只报告，不写入")
     args = ap.parse_args()
 
-    if not os.path.exists(args.html):
+    if not os.path.isfile(args.html):
         sys.exit("找不到页面文件：%s" % args.html)
     # newline="" 保留原有换行：否则读入时 CRLF 被折成 LF，写回（newline=""）后整个文件换行被改写
     with open(args.html, encoding="utf-8", newline="") as f:
@@ -111,6 +111,8 @@ def main():
 
     extra = ""
     if args.extra_chars:
+        if not os.path.isfile(args.extra_chars):
+            sys.exit("找不到字符文件：%s" % args.extra_chars)
         with open(args.extra_chars, encoding="utf-8") as f:
             extra = f.read()
 
@@ -120,7 +122,10 @@ def main():
 
     with tempfile.TemporaryDirectory() as tmpdir:
         ttf = args.ttf
-        if not ttf:
+        if ttf:
+            if not os.path.isfile(ttf):
+                sys.exit("找不到字体文件：%s" % ttf)
+        else:
             # 临时文件沿用 URL 的文件名：下方按扩展名标注源格式，--font-url 换源后不能仍标成 woff2
             name = os.path.basename(urllib.parse.urlparse(args.font_url).path)
             ttf = os.path.join(tmpdir, name if name.strip(".") else "font")
