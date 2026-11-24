@@ -3797,7 +3797,7 @@ function trapTab(e, m = document.querySelector('.modal.open')) {
   const f = m ? [...m.querySelectorAll('button:not([disabled])')] : [];
   if (!f.length) { e.preventDefault(); return; }
   const a = document.activeElement;
-  if (!m.contains(a)) { e.preventDefault(); f[0].focus(); }
+  if (!f.includes(a)) { e.preventDefault(); (e.shiftKey ? f[f.length - 1] : f[0]).focus(); }
   else if (e.shiftKey && a === f[0]) { e.preventDefault(); f[f.length - 1].focus(); }
   else if (!e.shiftKey && a === f[f.length - 1]) { e.preventDefault(); f[0].focus(); }
 }
