@@ -12,8 +12,11 @@ const assert = require('node:assert/strict');
 const { performance } = require('node:perf_hooks');
 if (!process.env.BASELINE_HTML) throw Error('Set BASELINE_HTML to the unmodified index.html');
 function source(file) {
-  const main = fs.readFileSync(file, 'utf8').match(/<script id="main">([\s\S]*?)<\/script>/)[1];
-  return main.slice(0, main.indexOf('/* ---------- 入口 ---------- */'));
+  const match = fs.readFileSync(file, 'utf8').match(/<script id="main">([\s\S]*?)<\/script>/);
+  assert(match, 'main script must exist in ' + file);
+  const entry = match[1].indexOf('/* ---------- 入口 ---------- */');
+  assert(entry > 0, 'entry marker must exist in ' + file);
+  return match[1].slice(0, entry);
 }
 const original = source(process.env.BASELINE_HTML);
 const patched = source(path.join(__dirname, '..', 'index.html'));
