@@ -725,6 +725,16 @@ const click = el => el.dispatchEvent(new window.MouseEvent('click', { bubbles: t
     assert(created === 1, '有过用户手势后应正常创建 AudioContext');
     window.eval('audioCtx = null;');
     window.AudioContext = origAC;
+    let vibrated = 0;
+    const origVib = nav.vibrate;
+    nav.vibrate = () => { vibrated++; return true; };
+    activation.hasBeenActive = false;
+    window.eval('triggerHaptic("move");');
+    assert(vibrated === 0, '尚无用户手势时不应调用 navigator.vibrate');
+    activation.hasBeenActive = true;
+    window.eval('triggerHaptic("move");');
+    assert(vibrated === 1, '有过用户手势后应正常触发震动反馈');
+    nav.vibrate = origVib;
     if (origUA) Object.defineProperty(nav, 'userActivation', origUA); else delete nav.userActivation;
   }
 
