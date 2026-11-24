@@ -1279,9 +1279,10 @@ function evalForcedLine(b, ai, side, ply, qleft) {
     b[blk] = EMPTY;
     return v;
   }
-  for (let j = 0; j < n3S; j++) {
-    if (openThreeOnLine(b, LINES[L3_SIDE[j]], side) >= 1)
-      return maxing ? (WIN_V / 4 - ply) : -(WIN_V / 4 - ply);
+  const need3 = AI_OPENTHREE_STRICT ? 1 : 2;
+  for (let j = 0, c3 = 0; j < n3S; j++) {
+    c3 += openThreeOnLine(b, LINES[L3_SIDE[j]], side);
+    if (c3 >= need3) return maxing ? (WIN_V / 4 - ply) : -(WIN_V / 4 - ply);
   }
   return maxing ? s : -s;
 }
@@ -2166,7 +2167,7 @@ function fastEvalForced(b, ai, side, ply, qleft) {
     b[blk] = EMPTY;
     return v;
   }
-  if ((isB ? totO3B : totO3W) >= 1) return maxing ? (WIN_V / 4 - ply) : -(WIN_V / 4 - ply);
+  if ((isB ? totO3B : totO3W) >= (AI_OPENTHREE_STRICT ? 1 : 2)) return maxing ? (WIN_V / 4 - ply) : -(WIN_V / 4 - ply);
   return ai === BLACK ? totScrB : -totScrB;
 }
 const origEvalLeaf = evalLeaf;
