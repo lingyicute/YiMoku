@@ -330,6 +330,13 @@ const click = el => el.dispatchEvent(new window.MouseEvent('click', { bubbles: t
   click($('restartBtn'));
   assert(document.querySelectorAll('.cell.flash').length === 0, '重开后清除棋谱高亮');
   assert(document.querySelectorAll('.cell.wig').length === 0, '重开后清除抖动类');
+  click(document.querySelector('.cell[data-x="7"][data-y="7"]'));
+  click(document.querySelector('.cell[data-x="7"][data-y="7"]'));
+  assert(document.querySelector('.cell[data-x="7"][data-y="7"]').classList.contains('wig'), '悔棋测试前提：已触发抖动类');
+  click($('undoBtn'));
+  assert(document.querySelectorAll('.cell.wig').length === 0, '悔棋后清除抖动类');
+  window.eval('tryPlace(-1, 7)');
+  assert(document.querySelectorAll('.cell.wig').length === 0, '越界坐标不得触发棋盘格抖动类');
   window.eval('setMode("ai")');
 
   /* ---- 计时只在显示的秒数变化时写 DOM ---- */
