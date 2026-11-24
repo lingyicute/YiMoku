@@ -970,7 +970,7 @@ function candidateList(b, radius) {
       if (!b[i]) continue;
       any = true;
       const x = i % N, y = (i / N) | 0;
-      if (AI_LINE_CAND && R >= 2) {
+      if (AI_LINE_CAND && R === 2) {
         /* ⑲-b 半径 2 的候选从「5×5 方块 25 格」收紧为「切比雪夫 1 邻域 9 格
            ∪ 四条线上距离 2 的 8 格」共 17 格。
            被去掉的格子（典型是马步位 (2,1)）沿 4 个方向、距离 2 以内都不存在
