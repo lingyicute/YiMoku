@@ -3671,6 +3671,7 @@ function undo() {
   cancelAI();
   clearWinTimer();
   clearMoveFlash();
+  for (let i = 0; i < N * N; i++) cellsEl[i].classList.remove('wig');
   const wasOver = S.over;
   let n = 1;
   if (S.mode === 'ai' && turn() === S.side) n = 2;   // 已回到我方回合 → 撤一对
