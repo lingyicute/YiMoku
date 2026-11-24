@@ -43,7 +43,6 @@ function loadEngine(disable) {
 const FULL = loadEngine([]);                                   // 全部开关开启（出货形态）
 const NO_LEAF = loadEngine(['AI_FAST_LEAF', 'AI_LINE_CAND']);                  // 关滑动窗口/stamp
 const NO_TT = loadEngine(['AI_TT']);                           // 关置换表
-const NO_INC = loadEngine(['AI_INC_EVAL']);                    // 关增量方向评估
 
 let seed = 20261009;
 function rnd() { seed ^= seed << 13; seed >>>= 0; seed ^= seed >>> 17; seed ^= seed << 5; seed >>>= 0; return seed / 4294967296; }
