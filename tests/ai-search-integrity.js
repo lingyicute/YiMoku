@@ -24,9 +24,9 @@ function engine(options = {}) {
   }
   return new Function('performance', code + `
     return { ZL, ZH, WIN_V, boardHash, evalLeaf, chooseAiMove,
-      search(b, ai, side, depth, fast) {
+      search(b, ai, side, depth, fast, ply = 0) {
         if (fast) { initIncTable(b); incActive = true; }
-        try { return abSearch(b, ai, side, depth, -WIN_V, WIN_V, 0, 0, 1e9, 0); }
+        try { return abSearch(b, ai, side, depth, -WIN_V, WIN_V, ply, 0, 1e9, 0); }
         finally { incActive = false; incDirty = lineDirty = -1; }
       },
       topKWinTie(b, side) {
@@ -186,6 +186,13 @@ test('topKPacked picks the lowest-index five when ACT_R2 discovers a higher inde
   // (5,2)=35 enters ACT_R2 ahead of (4,1)=19. Both complete five for BLACK.
   for (const [x, y] of [[5, 0], [5, 1], [5, 3], [5, 4], [0, 1], [1, 1], [2, 1], [3, 1]]) b[at(x, y)] = 1;
   assert.deepEqual(e.topKWinTie(b, 1), { full: 19, scored: 19, n: 1, packed: 19 });
+});
+test('abSearch guards KILL table access when ply reaches or exceeds 64', () => {
+  const e = engine({ stableTree: true }), b = fromMoves([112, 128]), before = b.slice();
+  const v0 = e.search(b, 1, 1, 2, false, 0);
+  const v64 = e.search(b, 1, 1, 2, false, 64);
+  assert.equal(v64, v0);
+  assert.deepEqual(b, before);
 });
 console.log('AI search integrity: ' + passed + ' passed, ' + failed + ' failed');
 if (failed) process.exitCode = 1;
