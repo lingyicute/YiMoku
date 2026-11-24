@@ -11,8 +11,10 @@ const match = html.match(/<script id="main">([\s\S]*?)<\/script>/);
 assert(match, 'main script must exist');
 const entry = match[1].indexOf('/* ---------- 入口 ---------- */');
 assert(entry > 0, 'entry marker must exist');
-function engine(clock = () => 0) {
-  return new Function('performance', match[1].slice(0, entry) + `
+function engine(clock = () => 0, strict = true) {
+  const code = strict ? match[1].slice(0, entry)
+    : match[1].slice(0, entry).replace('AI_OPENTHREE_STRICT = true', 'AI_OPENTHREE_STRICT = false');
+  return new Function('performance', code + `
     return { makeBoard, idx, other, WIN_V, T, pointTier, makesFive,
       openThreeCount, fiveThreatCount, evalBoard, evalLeaf, vcfRoot,
       leaf(b, ai, side, ply, fast) {
@@ -40,6 +42,18 @@ function test(name, fn) {
   checks++;
   try { fn(); } catch (e) { failed++; console.error('FAIL ' + name + ': ' + e.message); }
 }
+test('forced-line leaf gates single-three near-win on AI_OPENTHREE_STRICT', () => {
+  const e = engine(() => 0, false), b = e.makeBoard();
+  for (let x = 0; x < 4; x++) b[e.idx(x, 0)] = 1;
+  b[e.idx(1, 7)] = b[e.idx(7, 7)] = 2;
+  b[e.idx(3, 7)] = b[e.idx(4, 7)] = b[e.idx(5, 7)] = 1;
+  const afterBlock = b.slice();
+  afterBlock[e.idx(4, 0)] = 2;
+  const expected = e.evalBoard(afterBlock, 1);
+  for (const fast of [false, true]) {
+    assert.equal(e.leaf(b, 1, 2, 0, fast), expected, 'fast=' + fast);
+  }
+});
 function board(stones, transform, swap) {
   const b = E.makeBoard();
   for (const [x, y, p] of stones) {
