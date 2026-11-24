@@ -25,10 +25,11 @@ const RESOURCE_ATTRS = new Set(['src', 'href', 'xlink:href', 'srcset', 'imagesrc
 function resourceRefs(text) {
   const out = [];
   for (const t of text.matchAll(/<([a-zA-Z][\w-]*)\b([^>]*)>/g)) {
-    for (const a of t[2].matchAll(/([\w:-]+)\s*=\s*(?:"([^"]*)"|'([^']*)')/g)) {
+    const attrs = t[2].replace(/\/\s*$/, '');
+    for (const a of attrs.matchAll(/([\w:-]+)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+))/g)) {
       const attr = a[1].toLowerCase();
       if (!RESOURCE_ATTRS.has(attr)) continue;
-      const val = a[2] !== undefined ? a[2] : a[3];
+      const val = a[2] !== undefined ? a[2] : (a[3] !== undefined ? a[3] : a[4]);
       const urls = attr.endsWith('srcset') ? val.split(',').map(s => s.trim().split(/\s+/)[0]) : [val.trim()];
       for (const url of urls) if (url) out.push({ tag: t[1].toLowerCase(), attr, url });
     }
@@ -39,10 +40,44 @@ const externalOf = text => resourceRefs(text)
   .filter(r => RESOURCE_TAGS.has(r.tag))
   .filter(r => !/^(data:|#|blob:)/i.test(r.url))
   .map(r => `<${r.tag} ${r.attr}="${r.url}">`);
+function cssBlocks(text) {
+  const out = [];
+  for (const m of text.matchAll(/<style\b[^>]*>([\s\S]*?)<\/style>/gi)) out.push(m[1]);
+  for (const t of text.matchAll(/<[a-zA-Z][\w-]*\b([^>]*)>/g)) {
+    const attrs = t[1].replace(/\/\s*$/, '');
+    for (const a of attrs.matchAll(/\bstyle\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+))/gi)) {
+      out.push(a[1] !== undefined ? a[1] : (a[2] !== undefined ? a[2] : a[3]));
+    }
+  }
+  return out;
+}
+function externalCssOf(text) {
+  const bad = [];
+  const importRe = /@import\s+(?:url\(\s*(?:"([^"]*)"|'([^']*)'|([^)"']*))\s*\)|"([^"]*)"|'([^']*)')/gi;
+  for (const raw of cssBlocks(text)) {
+    const css = raw.replace(/\/\*[\s\S]*?\*\//g, '');
+    for (const m of css.matchAll(importRe)) {
+      const u = (m[1] ?? m[2] ?? m[3] ?? m[4] ?? m[5] ?? '').trim();
+      if (!/^data:/i.test(u)) bad.push(`@import ${u || '(empty)'}`);
+    }
+    const rest = css.replace(importRe, '');
+    for (const m of rest.matchAll(/url\(\s*(?:"([^"]*)"|'([^']*)'|([^)"']*))\s*\)/gi)) {
+      const u = (m[1] ?? m[2] ?? m[3] ?? '').trim();
+      if (u && !/^(data:|#)/i.test(u)) bad.push(`url(${u})`);
+    }
+  }
+  return bad;
+}
 /* 检查器自检：这些写法都会联网，必须全部被认出，避免契约本身失效还照样 PASS */
 const probe = externalOf('<img src="data:," srcset="#a 1x, https://x.test/b.png 2x"><video poster="https://x.test/p.jpg">' +
-  '<svg><image xlink:href="https://x.test/i.png"/></svg><object data="https://x.test/o.svg"><a href="https://x.test/">');
-check(probe.length === 4, `检查器漏判联网写法（应为 4 处，实际 ${probe.length}）: ${probe.join(', ')}`);
+  '<svg><image xlink:href="https://x.test/i.png"/></svg><object data="https://x.test/o.svg">' +
+  '<script src=https://x.test/u.js></script><a href="https://x.test/">');
+check(probe.length === 5, `检查器漏判联网写法（应为 5 处，实际 ${probe.length}）: ${probe.join(', ')}`);
+const cssProbe = externalCssOf('<style>@import "https://x.test/a.css"; @import url("https://x.test/c.css"); ' +
+  '.a{background:url(//x.test/b.png)} .b{src:url("Nebulove.woff2")} ' +
+  '.ok{background:url("data:image/gif;base64,R0lGODlhAQABAAAAACw=")} .ok2{filter:url(#f)}</style>' +
+  '<div style="background:url(bg.png)"></div>');
+check(cssProbe.length === 5, `CSS 检查器漏判外部写法（应为 5 处，实际 ${cssProbe.length}）: ${cssProbe.join(', ')}`);
 const refs = resourceRefs(html);
 const external = externalOf(html);
 check(external.length === 0, `发现外部资源引用: ${external.join(', ')}`);
@@ -62,8 +97,8 @@ if (main) {
 
 check(!/function\s+selfTest\s*\(/.test(html), '产品 HTML 混入了开发专用自检代码');
 check(/<link\s+rel=["']icon["']/i.test(html), '缺少内联 favicon（浏览器会请求 /favicon.ico）');
-check(!/@import\s+url\(\s*["']?https?:/i.test(html), 'CSS 中存在远程 @import');
-check(!/url\(\s*["']?https?:/i.test(html), 'CSS 中存在远程 url() 资源');
+const externalCss = externalCssOf(html);
+check(externalCss.length === 0, `CSS 中存在非内联资源引用: ${externalCss.join(', ')}`);
 
 if (failures.length) {
   console.error('offline-contract: FAIL');
