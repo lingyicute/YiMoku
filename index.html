@@ -1800,7 +1800,8 @@ const RADIUS_BY_DEPTH = d => 2;
 const EXT_LIMIT = 8;                           // 单条线路上最多延伸的手数（防止爆炸）
 /* ⑲-c 杀手着法：在某层造成截断的着法，在兄弟子树里往往再次截断。
    与 HIST 的区别是它按「层数」记忆（同层=同类局面），HIST 按「格子」记忆。 */
-const KILL = new Int32Array(64 * 2).fill(-1);
+const AB_MAX_PLY = 256;
+const KILL = new Int32Array(AB_MAX_PLY * 2).fill(-1);
 /* ⑧ 历史启发表：在某节点造成 beta 截断的着法，在相似局面里更可能再次截断。
    加到 topKScored 的排序键上，只影响「同梯队」候选的次序——上限 HIST_CAP=48
    小于相邻梯队权重差（TW[1]=100），不会越级提拔低梯队着法。
@@ -2296,7 +2297,7 @@ function candidateBuf(b, radius) {
   for (let q = 0; q < cl.length; q++) CAND_BUF[q] = cl[q];
   return cl.length;
 }
-const AB_CAND = new Int32Array(64 * 8);
+const AB_CAND = new Int32Array(AB_MAX_PLY * 8);
 function topKPacked(b, side, k, radius, plyBase) {
   if (incDirty >= 0) { incUpdateMove(b, incDirty); incDirty = -1; }
   const R = radius === undefined ? 2 : radius;
@@ -2506,7 +2507,7 @@ function abSearch(b, ai, side, depth, alpha, beta, ply, t0, budget, ext) {
     } else slot = -1;
   }
   const alphaP = alpha, betaP = beta;              // 收窄后的窗口（完成循环时的标志分类基准）
-  if (depth <= 0) {
+  if (depth <= 0 || ply >= AB_MAX_PLY) {
     const v = evalLeaf(b, ai, side, ply);
     /* 叶子值入表（EXACT, depth=0）；但不覆盖同局面已存的更深搜索结果 */
     if (slot >= 0 && (TT_KEY[slot] !== key || ((TT_META[slot] >>> 2) & 31) === 0))
@@ -2515,7 +2516,7 @@ function abSearch(b, ai, side, depth, alpha, beta, ply, t0, budget, ext) {
     return v;
   }
   if (now() - t0 > budget) { if (rootCall) zHashActive = false; return null; }
-  const plyBase = (ply < 63 ? ply : 63) * 8;
+  const plyBase = ply * 8;
   let cLen;
   if (AI_FAST_TOPK && AI_INC_EVAL && incActive) {
     cLen = topKPacked(b, side, K_BY_DEPTH(depth), RADIUS_BY_DEPTH(depth), plyBase);
