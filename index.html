@@ -3288,6 +3288,7 @@ function buildBoard() {
 }
 function paintCell(i) {
   const v = S.board[i], el = cellsEl[i];
+  el.classList.remove('wig');
   el.classList.toggle('on', v !== EMPTY);
   el.classList.toggle('on1', v === BLACK);
   el.classList.toggle('on2', v === WHITE);
